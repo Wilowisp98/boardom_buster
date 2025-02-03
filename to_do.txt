@@ -1,0 +1,2 @@
+IDEAS:
+- i do not want to fetch all the games everyday, maybe i can save the maximum id from the current execution and fetch from there in future executions.
