@@ -231,7 +231,7 @@ async def main(game_ids: List[int]) -> pl.DataFrame:
     Returns:
         pl.DataFrame: A DataFrame containing the combined data for all requested games.
     """
-    client = BGGClient()
+    client = BGG()
     tasks = [client.get_game_data(game_id) for game_id in game_ids]
     results = await asyncio.gather(*tasks)
     return pl.concat(results)
