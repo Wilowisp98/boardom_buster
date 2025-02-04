@@ -39,7 +39,8 @@ class BGG:
         endpoint = f"{self.base_url}/thing"
         params = {
             "id": game_id,
-            "type": "boardgame"
+            "type": "boardgame",
+            "stats": 1
         }
 
         response_data = None
@@ -126,6 +127,17 @@ class BGG:
             game_max_playtime = int(game_info['maxplaytime']['@value'])
             game_min_age = int(game_info['minage']['@value'])
 
+            # Extract game statistics
+            game_stats = response_data['items']['statistics']
+
+            num_rates = game_stats['ratings']['usersrated']['@value']
+            avg_rating = game_stats['ratings']['average']['@value']
+            game_rank = None
+            for rank in game_stats['ratings']['ranks']['rank']:
+                if rank['@name'] == 'boardgame':
+                    game_rank = rank['@value']
+                    break
+                    
             # Create DataFrame
             df = pl.DataFrame({
                 "game_name": [game_name],
@@ -146,7 +158,10 @@ class BGG:
                 "min_playtime": [game_min_playtime],
                 "max_playtime": [game_max_playtime],
                 "min_age": [game_min_age],
-                "language_dependence_description": [language_dependence]
+                "language_dependence_description": [language_dependence],
+                "game_rank": [game_rank],
+                "avg_rating": [avg_rating],
+                "num_rates": [num_rates]
             })
 
             return df
