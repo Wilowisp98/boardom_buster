@@ -127,25 +127,37 @@ class BGG:
             game_max_playtime = int(game_info['maxplaytime']['@value'])
             game_min_age = int(game_info['minage']['@value'])
 
-            game_stats = response_data['items']['statistics']
-
-            # Extract game statistics
-            num_rates = game_stats['ratings']['usersrated']['@value']
-            avg_rating = game_stats['ratings']['average']['@value']
+            # Inside _prepare_data method
+            game_stats = game_info['statistics']
+            ratings = game_stats['ratings']
+            
+            # Basic stats
+            num_rates = int(ratings['usersrated']['@value'])
+            avg_rating = float(ratings['average']['@value'])
+            
+            # Extract ranks and categories
             game_rank = None
-            for rank in game_stats['ratings']['ranks']['rank']:
+            game_subcategories = []
+            for rank in ratings['ranks']['rank']:
                 if rank['@name'] == 'boardgame':
-                    game_rank = rank['@value']
-                    break
-            num_weights = game_stats['ratings']['numweights']['@value']
-            avg_weight = game_stats['ratings']['averageweight']['@value']
-            owned_by = game_stats['ratings']['owned']['@value']
-            wished_by = game_stats['ratings']['wishing']['@value']
+                    game_rank = int(rank['@value']) if rank['@value'] != 'Not Ranked' else None
+                elif rank['@type'] == 'family':
+                    game_subcategories.append({
+                        'name': rank['@name'],
+                        'rank': int(rank['@value']) if rank['@value'] != 'Not Ranked' else None
+                    })
+            
+            # Additional stats with type conversion
+            num_weights = int(ratings['numweights']['@value'])
+            avg_weight = float(ratings['averageweight']['@value'])
+            owned_by = int(ratings['owned']['@value'])
+            wished_by = int(ratings['wishing']['@value'])
 
             # Create DataFrame
             df = pl.DataFrame({
                 "game_name": [game_name],
                 "description": [game_description],
+                "game_subcategories": [game_subcategories],
                 "publication_year": [game_publication_year],
                 "min_players": [game_min_players],
                 "max_players": [game_max_players],
