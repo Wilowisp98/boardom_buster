@@ -83,8 +83,15 @@ def add_popularity_score(df: pl.DataFrame) -> pl.DataFrame:
     popularity_col = (
         (pl.col("owned_by") / pl.col("owned_by").max() * 0.4) +
         (pl.col("wished_by") / pl.col("wished_by").max() * 0.2) +
-        (pl.col("num_rates") / pl.col("num_rates").max() * 0.2) +
-        (pl.col("avg_rating") / 10 * 0.2)
+        (pl.col("num_rates") / pl.col("num_rates").max() * 0.1) +
+        (pl.col("avg_rating") / 10 * 0.3)
     ).alias("popularity_score")
     
     return df.with_columns(popularity_col)
+
+def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
+    column = "description"
+    df = clean_text_column(df, column)
+    df = add_popularity_score(df)
+
+    return df
