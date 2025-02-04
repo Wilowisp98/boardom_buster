@@ -127,9 +127,9 @@ class BGG:
             game_max_playtime = int(game_info['maxplaytime']['@value'])
             game_min_age = int(game_info['minage']['@value'])
 
-            # Extract game statistics
             game_stats = response_data['items']['statistics']
 
+            # Extract game statistics
             num_rates = game_stats['ratings']['usersrated']['@value']
             avg_rating = game_stats['ratings']['average']['@value']
             game_rank = None
@@ -137,7 +137,11 @@ class BGG:
                 if rank['@name'] == 'boardgame':
                     game_rank = rank['@value']
                     break
-                    
+            num_weights = game_stats['ratings']['numweights']['@value']
+            avg_weight = game_stats['ratings']['averageweight']['@value']
+            owned_by = game_stats['ratings']['owned']['@value']
+            wished_by = game_stats['ratings']['wishing']['@value']
+
             # Create DataFrame
             df = pl.DataFrame({
                 "game_name": [game_name],
@@ -161,7 +165,11 @@ class BGG:
                 "language_dependence_description": [language_dependence],
                 "game_rank": [game_rank],
                 "avg_rating": [avg_rating],
-                "num_rates": [num_rates]
+                "num_rates": [num_rates],
+                "avg_weight": [avg_weight],
+                "num_weights": [num_weights],
+                "owned_by": [owned_by],
+                "wished_by": [wished_by]
             })
 
             return df
