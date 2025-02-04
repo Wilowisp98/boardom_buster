@@ -146,8 +146,7 @@ class BGG:
                 "min_playtime": [game_min_playtime],
                 "max_playtime": [game_max_playtime],
                 "min_age": [game_min_age],
-                "language_dependence_level": [language_dependence['level'] if language_dependence else None],
-                "language_dependence_description": [language_dependence['value'] if language_dependence else None]
+                "language_dependence_description": [language_dependence]
             })
 
             return df
@@ -200,10 +199,7 @@ class BGG:
                 for result in poll['results']['result']:
                     votes = int(result['@numvotes'])
                     if votes > max_votes:
-                        language_dependence = {
-                            'level': int(result['@level']),
-                            'value': result['@value']
-                        }
+                        language_dependence = result['@value']
                         max_votes = votes
 
         return best_numplayers, recommended_numplayers, suggested_playerage, language_dependence
@@ -235,8 +231,3 @@ async def main(game_ids: List[int]) -> pl.DataFrame:
     tasks = [client.get_game_data(game_id) for game_id in game_ids]
     results = await asyncio.gather(*tasks)
     return pl.concat(results)
-
-if __name__ == "__main__":
-    game_ids = [1, 2, 3, 4, 5]
-    df = asyncio.run(main(game_ids))
-    print(df)
