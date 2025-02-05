@@ -65,9 +65,9 @@ Columns that could be interesting to calculate the similarity:
 - playing_time
 - language_dependence_description
 
-game_subcategories: If these are ranked or weighted in any way, they could be useful for similarity scoring.
-recommended_num_players: Important, since player count can significantly impact gameplay experience.
-suggested_play_age: Useful, but could be normalized into broader age groups (e.g., "family," "teen," "adult").
+game_subcategories: If these are ranked or weighted in any way, they could be useful for similarity scoring. X 
+recommended_num_players: Important, since player count can significantly impact gameplay experience. X
+suggested_play_age: Useful, but could be normalized into broader age groups (e.g., "family," "teen," "adult"). X
 categories & mechanics: Core to game identity—using embeddings or one-hot encoding could work well.
-playing_time: You might want to bucket this into ranges (e.g., short, medium, long) to smooth out small differences.
+playing_time: You might want to bucket this into ranges (e.g., short, medium, long) to smooth out small differences. X
 language_dependence_description: Good for filtering language-heavy vs. language-independent games. You could turn this into an ordinal scale.
