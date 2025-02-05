@@ -21,3 +21,53 @@ IDEAS:
     - we could recommend a top 5 games, if for example, we got input of 3 and 2 are similar.
         - 3 would come from the 2 commons.
         - 2 would come from the one that was not in common.
+
+
+
+[{
+"game_name":"Die Macher",
+"description":"...",
+"game_subcategories":[{"name":"strategygames","rank":262}],
+"publication_year":1986,
+"min_players":3,
+"max_players":5,
+"best_num_players":5,
+"recommended_num_players":4,
+"suggested_play_age":14,
+"categories":["Economic","Negotiation","Political"],
+"mechanics":["Alliances","Area Majority / Influence","Auction / Bidding","Dice Rolling","Hand Management","Simultaneous Action Selection"],
+"families":["Country: Germany","Digital Implementations: VASSAL","Political: Elections","Series: Classic Line (Valley Games)"],
+"designers":["Karl-Heinz Schmiel"],
+"artists":["Bernd Brunnhofer","Marcus Gschwendtner","Harald Lieske"],
+"publishers":["Hans im Glück","Moskito Spiele","Ediciones MasQueOca","Portal Games","Spielworxx","sternenschimmermeer","Stronghold Games","Valley Games, Inc.","YOKA Games"],
+"playing_time":240,
+"min_playtime":240,
+"max_playtime":240,
+"min_age":14,
+"language_dependence_description":"No necessary in-game text",
+"game_rank":452,
+"avg_rating":7.59004,
+"num_rates":5872,
+"avg_weight":4.3101,
+"num_weights":790,
+"owned_by":8289,
+"wished_by":2183,
+"popularity_score":0.4322525127381308
+}]
+
+
+Columns that could be interesting to calculate the similarity:
+- game_subcategories
+- recommended_num_players
+- play_age ?
+- categories
+- mechanics.
+- playing_time
+- language_dependence_description
+
+game_subcategories: If these are ranked or weighted in any way, they could be useful for similarity scoring.
+recommended_num_players: Important, since player count can significantly impact gameplay experience.
+suggested_play_age: Useful, but could be normalized into broader age groups (e.g., "family," "teen," "adult").
+categories & mechanics: Core to game identity—using embeddings or one-hot encoding could work well.
+playing_time: You might want to bucket this into ranges (e.g., short, medium, long) to smooth out small differences.
+language_dependence_description: Good for filtering language-heavy vs. language-independent games. You could turn this into an ordinal scale.

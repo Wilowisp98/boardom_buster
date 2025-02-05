@@ -147,6 +147,11 @@ class BGG:
                         'rank': int(rank['@value']) if rank['@value'] != 'Not Ranked' else None
                     })
             
+            subcategory_1 = game_subcategories[0]['name'] if len(game_subcategories) > 0 else None
+            rank_subcategory_1 = game_subcategories[0]['rank'] if len(game_subcategories) > 0 else None
+            subcategory_2 = game_subcategories[1]['name'] if len(game_subcategories) > 1 else None
+            rank_subcategory_2 = game_subcategories[1]['rank'] if len(game_subcategories) > 1 else None
+
             # Additional stats with type conversion
             num_weights = int(ratings['numweights']['@value'])
             avg_weight = float(ratings['averageweight']['@value'])
@@ -157,7 +162,8 @@ class BGG:
             df = pl.DataFrame({
                 "game_name": [game_name],
                 "description": [game_description],
-                "game_subcategories": [game_subcategories],
+                "subcategory_1": [subcategory_1],
+                "subcategory_2": [subcategory_2],
                 "publication_year": [game_publication_year],
                 "min_players": [game_min_players],
                 "max_players": [game_max_players],
@@ -178,6 +184,8 @@ class BGG:
                 "game_rank": [game_rank],
                 "avg_rating": [avg_rating],
                 "num_rates": [num_rates],
+                "rank_subcategory_1": [rank_subcategory_1],
+                "rank_subcategory_2": [rank_subcategory_2],
                 "avg_weight": [avg_weight],
                 "num_weights": [num_weights],
                 "owned_by": [owned_by],
