@@ -1,6 +1,8 @@
+import os
 import requests
 import xmltodict
 import asyncio
+import json
 from typing import List, Optional, Tuple
 import polars as pl
 
@@ -20,6 +22,20 @@ class BGG:
             base_url (str): The base URL for the BGG API. Defaults to "https://boardgamegeek.com/xmlapi2".
         """
         self.base_url = base_url
+        self.control_file = "bgg_control.json"
+        self.control_data = self._load_control_data()
+        self.failure = False
+        self.global_df = None
+
+    def _load_control_data(self) -> dict:
+        if os.path.exists(self.control_file):
+            with open(self.control_file, 'r') as f:
+                return json.load(f)
+        return {"first_execution": True, "last_id": 1}
+
+    def _save_control_data(self):
+        with open(self.control_file, 'w') as f:
+            json.dump(self.control_data, f)
 
     async def get_game_data(self, game_id: int, retry_delay: int = 5, max_retries: int = 3) -> pl.DataFrame:
         """
@@ -49,6 +65,9 @@ class BGG:
 
             if response.status_code == 200:
                 response_data = xmltodict.parse(response.content)
+                if 'items' not in response_data or not response_data['items'].get('item'):
+                    response_data = None
+                    break
                 break
             elif response.status_code == 202:
                 print(f"Request queued, retrying in {retry_delay} seconds...")
@@ -147,9 +166,9 @@ class BGG:
                         'rank': int(rank['@value']) if rank['@value'] != 'Not Ranked' else None
                     })
             
-            subcategory_1 = game_subcategories[0]['name'] if len(game_subcategories) > 0 else None
+            subcategory_1 = game_subcategories[0]['name'] if len(game_subcategories) > 0 else ''
             rank_subcategory_1 = game_subcategories[0]['rank'] if len(game_subcategories) > 0 else None
-            subcategory_2 = game_subcategories[1]['name'] if len(game_subcategories) > 1 else None
+            subcategory_2 = game_subcategories[1]['name'] if len(game_subcategories) > 1 else ''
             rank_subcategory_2 = game_subcategories[1]['rank'] if len(game_subcategories) > 1 else None
 
             # Additional stats with type conversion
@@ -244,7 +263,8 @@ class BGG:
                     if votes > max_votes:
                         language_dependence = result['@value']
                         max_votes = votes
-
+        
+        language_dependence = language_dependence if language_dependence else ''
         return best_numplayers, recommended_numplayers, suggested_playerage, language_dependence
 
     def _extract_links(self, game_info: dict, link_type: str) -> List[str]:
@@ -259,18 +279,54 @@ class BGG:
             List[str]: A list of link values.
         """
         return [link['@value'] for link in game_info['link'] if link['@type'] == link_type]
+    
+    async def continuous_scan(self, force_restart: bool = False, batch_size: int = 10) -> None:
+        if force_restart:
+            self.control_data = {"first_execution": True, "last_id": 1}
 
-async def main(game_ids: List[int]) -> pl.DataFrame:
-    """
-    Fetches game data for a list of game IDs asynchronously and returns a combined DataFrame.
+        start_id = 1 if self.control_data["first_execution"] else self.control_data["last_id"]
+        current_id = start_id
+        dataframes = []
 
-    Args:
-        game_ids (List[int]): A list of BGG game IDs.
+        while not self.failure:
+            try:
+                batch_ids = list(range(current_id, current_id + batch_size))
+                tasks = [self.get_game_data(game_id) for game_id in batch_ids]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    Returns:
-        pl.DataFrame: A DataFrame containing the combined data for all requested games.
-    """
+                valid_results = [df for df in results if isinstance(df, pl.DataFrame)]
+
+                if valid_results:
+                    dataframes.extend(valid_results)
+                    print(f"Processed batch {current_id} to {current_id + batch_size - 1}")
+                else:
+                    self.failure = True
+                    to_save_id = current_id
+                    break
+
+                if len(valid_results) != batch_size:
+                    self.failure = True
+                    to_save_id = current_id + len(valid_results)
+                    break
+
+                current_id += batch_size
+
+            except Exception as e:
+                print(f"Error processing batch starting at ID {current_id}: {str(e)}")
+                self.failure = True
+                to_save_id = current_id
+                break
+
+        if dataframes:
+            self.global_df = pl.concat(dataframes)
+            self.global_df.write_json(f"bgg_games_{start_id}_to_{to_save_id}.json")
+
+        self.control_data.update({
+            "first_execution": False,
+            "last_id": to_save_id
+        })
+        self._save_control_data()
+
+async def main(force_restart: bool = False):
     client = BGG()
-    tasks = [client.get_game_data(game_id) for game_id in game_ids]
-    results = await asyncio.gather(*tasks)
-    return pl.concat(results)
+    await client.continuous_scan(force_restart=force_restart)
