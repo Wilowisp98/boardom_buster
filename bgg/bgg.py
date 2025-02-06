@@ -5,7 +5,10 @@ import asyncio
 import json
 from typing import List, Optional, Tuple
 import polars as pl
-import random
+from datetime import datetime
+import time
+import logging
+from . import logger
 
 SCHEMA = pl.Schema({
     "game_name": pl.Utf8,
@@ -48,9 +51,7 @@ class BGG:
         base_url (str): The base URL for the BGG API.
     """
 
-    def __init__(self, base_url: str = "https://boardgamegeek.com/xmlapi2", 
-                 min_sleep: float = 1.0, 
-                 max_sleep: float = 3.0) -> None:
+    def __init__(self, base_url: str = "https://boardgamegeek.com/xmlapi2") -> None:
         """
         Initializes the BGG class with the base URL.
 
@@ -61,13 +62,17 @@ class BGG:
         self.control_file = "bgg_control.json"
         self.control_data = self._load_control_data()
         self.global_df = None
-        self.min_sleep = min_sleep
-        self.max_sleep = max_sleep
+        self.current_date = int(datetime.now().strftime('%Y%m%d'))
+        self.base_filename = "raw_bgg_data"
+        self.logger = logger.get_logger('BGGLogger')
 
     def _load_control_data(self) -> dict:
         if os.path.exists(self.control_file):
             with open(self.control_file, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                self.logger.info(f"Loaded control data: last_id={data.get('last_id')}")
+                return data
+        self.logger.info("No existing control data found, starting fresh")
         return {"first_execution": True, "last_id": 1}
 
     def _save_control_data(self):
@@ -96,27 +101,35 @@ class BGG:
             "stats": 1
         }
 
-        sleep_time = random.uniform(self.min_sleep, self.max_sleep)
-        await asyncio.sleep(sleep_time)
+        await asyncio.sleep(1)
 
         response_data = None
-        for _ in range(max_retries):
-            response = await self._make_async_request(url=endpoint, params=params)
+        for attempt in range(max_retries):
+            try:
+                response = await self._make_async_request(url=endpoint, params=params)
 
-            if response.status_code == 200:
-                response_data = xmltodict.parse(response.content)
-                if 'items' not in response_data or not response_data['items'].get('item'):
-                    response_data = None
+                if response.status_code == 200:
+                    response_data = xmltodict.parse(response.content)
+                    if 'items' not in response_data or not response_data['items'].get('item'):
+                        self.logger.warning(f"No data found for game ID {game_id}")
+                        response_data = None
+                        break
+                    self.logger.debug(f"Successfully retrieved data for game ID {game_id}")
                     break
-                break
-            elif response.status_code == 202:
-                print(f"Request queued, retrying in {retry_delay} seconds...")
-                await asyncio.sleep(retry_delay)
-            else:
-                response.raise_for_status()
+                elif response.status_code == 202:
+                    self.logger.info(f"Request queued for game ID {game_id}, attempt {attempt + 1}/{max_retries}")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    self.logger.error(f"HTTP {response.status_code} for game ID {game_id}")
+                    response.raise_for_status()
+
+            except Exception as e:
+                self.logger.error(f"Error retrieving game ID {game_id}: {str(e)}", exc_info=True)
+                if attempt == max_retries - 1:
+                    raise
 
         if not response_data:
-            raise Exception(f"Failed to get response after {max_retries} attempts")
+            raise Exception(f"Failed to get response for game ID {game_id} after {max_retries} attempts")
 
         return self._prepare_data(response_data)
 
@@ -321,7 +334,27 @@ class BGG:
         return [link['@value'] for link in game_info['link'] if link['@type'] == link_type]
     
     async def continuous_scan(self, force_restart: bool = False, batch_size: int = 10) -> None:
+        """
+        Continuously scans and retrieves game data in batches, handling the process in an asynchronous manner.
+        Maintains state between executions using control data and combines results into a global DataFrame.
+
+        Args:
+            force_restart (bool, optional): If True, resets the control data to start scanning from ID 1.
+                Defaults to False.
+            batch_size (int, optional): Number of games to process in each batch. Defaults to 10.
+
+        Returns:
+            polars.DataFrame: A concatenated DataFrame containing all successfully retrieved game data.
+
+        Notes:
+            - Uses control data to track progress between executions
+            - Processes games in batches asynchronously
+            - Stops after 50 consecutive failed attempts
+            - Saves progress periodically through control data
+            - Handles exceptions and failed requests gracefully
+        """
         if force_restart:
+            self.logger.info("Forcing restart of scanning process")
             self.control_data = {"first_execution": True, "last_id": 1}
 
         start_id = 1 if self.control_data["first_execution"] else self.control_data["last_id"]
@@ -329,9 +362,13 @@ class BGG:
         dataframes = []
         consecutive_failures = 0
 
+        self.logger.info(f"Starting continuous scan from ID {start_id}")
+
         while consecutive_failures < 50:
             try:
                 batch_ids = list(range(current_id, current_id + batch_size))
+                self.logger.info(f"Processing batch: IDs {current_id} to {current_id + batch_size - 1}")
+                
                 tasks = [self.get_game_data(game_id) for game_id in batch_ids]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -339,29 +376,95 @@ class BGG:
 
                 if valid_results:
                     dataframes.extend(valid_results)
-                    print(f"Processed batch {current_id} to {current_id + batch_size - 1}")
+                    self.logger.info(f"Successfully processed {len(valid_results)} games in batch {current_id}-{current_id + batch_size - 1}")
                     consecutive_failures = 0
                 else:
                     consecutive_failures += 1
+                    self.logger.warning(f"No valid results in batch {current_id}-{current_id + batch_size - 1}. Consecutive failures: {consecutive_failures}")
 
                 current_id += batch_size
 
             except Exception as e:
-                print(f"Error processing batch starting at ID {current_id}: {str(e)}")
+                self.logger.error(f"Error processing batch starting at ID {current_id}", exc_info=True)
                 break
-        
+
         if dataframes:
             self.global_df = pl.concat(dataframes)
+            self.logger.info(f"Total games collected: {self.global_df.height}")
 
         self.control_data.update({
             "first_execution": False,
             "last_id": current_id
         })
         self._save_control_data()
-
-        return self.global_df
+        
+        return self.global_df, self.global_df.height
     
-async def main(force_restart: bool = False):
+async def main_bgg(force_restart: bool = False):
+    """
+    Main entry point for the BGG data collection process. Creates a BGG client instance
+    and initiates the continuous scanning process. Handles data persistence with date-stamped
+    parquet files.
+    Args:
+        force_restart (bool, optional): If True, forces the scan to start from the beginning
+            and creates a new data file. Defaults to False.
+    Returns:
+        polars.DataFrame: The complete DataFrame containing all collected game data.
+    Example:
+        >>> df = await main(force_restart=True)
+        >>> print(df.shape)
+    Notes:
+        - Creates a new file if force_restart is True
+        - On first execution, creates a new file regardless of force_restart
+        - Otherwise, loads the most recent file and appends new data
+    """
+    start_time = time.time()
+    logger = logging.getLogger('BGGLogger')
+    
+    logger.info("Starting BGG data collection process")
+    
     client = BGG()
-    df = await client.continuous_scan(force_restart=force_restart)
-    return df
+    data_dir = os.path.join(os.path.dirname(__file__), 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    
+    existing_files = [f for f in os.listdir(data_dir) if f.startswith(client.base_filename) and f.endswith('.parquet')]
+    
+    try:
+        if force_restart:
+            logger.info("Force restart requested - starting fresh data collection")
+            df, df_size = await client.continuous_scan(force_restart=True)
+            output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
+            df.write_parquet(output_file)
+            logger.info(f"Wrote new data file: {output_file}")
+        else:
+            if not existing_files:
+                logger.info("No existing data files found - starting fresh collection")
+                df, df_size = await client.continuous_scan(force_restart=False)
+                output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
+                df.write_parquet(output_file)
+                logger.info(f"Wrote new data file: {output_file}")
+            else:
+                latest_file = max(existing_files, key=lambda x: int(x.split('_')[2].split('.')[0]))
+                latest_file_path = os.path.join(data_dir, latest_file)
+                logger.info(f"Loading existing data from {latest_file}")
+                existing_df = pl.read_parquet(latest_file_path)
+                logger.info(f"Existing data contains {existing_df.height} games")
+                
+                logger.info("Starting collection of new data")
+                new_df, df_size = await client.continuous_scan(force_restart=False)
+                df = pl.concat([existing_df, new_df])
+                
+                output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
+                df.write_parquet(output_file)
+                logger.info(f"Wrote updated data file: {output_file}")
+        
+        execution_time = time.time() - start_time
+        logger.info(f"Found {df_size} new boardgames")
+        logger.info(f"Total dataset size: {df.height} boardgames")
+        logger.info(f"Total execution time: {execution_time / 60:.2f} minutes")
+        
+        return df
+        
+    except Exception as e:
+        logger.error("Critical error in main execution", exc_info=True)
+        raise
