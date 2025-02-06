@@ -5,6 +5,40 @@ import asyncio
 import json
 from typing import List, Optional, Tuple
 import polars as pl
+import random
+
+SCHEMA = pl.Schema({
+    "game_name": pl.Utf8,
+    "description": pl.Utf8,
+    "subcategory_1": pl.Utf8,
+    "subcategory_2": pl.Utf8,
+    "publication_year": pl.Int32,
+    "min_players": pl.Int32,
+    "max_players": pl.Int32,
+    "best_num_players": pl.Int32,
+    "recommended_num_players": pl.Int32,
+    "suggested_play_age": pl.Int32,
+    "categories": pl.List(pl.Utf8),
+    "mechanics": pl.List(pl.Utf8),
+    "families": pl.List(pl.Utf8),
+    "designers": pl.List(pl.Utf8),
+    "artists": pl.List(pl.Utf8),
+    "publishers": pl.List(pl.Utf8),
+    "playing_time": pl.Int32,
+    "min_playtime": pl.Int32,
+    "max_playtime": pl.Int32,
+    "min_age": pl.Int32,
+    "language_dependence_description": pl.Utf8,
+    "game_rank": pl.Int32,
+    "avg_rating": pl.Float64,
+    "num_rates": pl.Int32,
+    "rank_subcategory_1": pl.Int32,
+    "rank_subcategory_2": pl.Int32,
+    "avg_weight": pl.Float64,
+    "num_weights": pl.Int32,
+    "owned_by": pl.Int32,
+    "wished_by": pl.Int32
+})
 
 class BGG:
     """
@@ -14,7 +48,9 @@ class BGG:
         base_url (str): The base URL for the BGG API.
     """
 
-    def __init__(self, base_url: str = "https://boardgamegeek.com/xmlapi2") -> None:
+    def __init__(self, base_url: str = "https://boardgamegeek.com/xmlapi2", 
+                 min_sleep: float = 1.0, 
+                 max_sleep: float = 3.0) -> None:
         """
         Initializes the BGG class with the base URL.
 
@@ -24,8 +60,9 @@ class BGG:
         self.base_url = base_url
         self.control_file = "bgg_control.json"
         self.control_data = self._load_control_data()
-        self.failure = False
         self.global_df = None
+        self.min_sleep = min_sleep
+        self.max_sleep = max_sleep
 
     def _load_control_data(self) -> dict:
         if os.path.exists(self.control_file):
@@ -58,6 +95,9 @@ class BGG:
             "type": "boardgame",
             "stats": 1
         }
+
+        sleep_time = random.uniform(self.min_sleep, self.max_sleep)
+        await asyncio.sleep(sleep_time)
 
         response_data = None
         for _ in range(max_retries):
@@ -165,10 +205,10 @@ class BGG:
                         'name': rank['@name'],
                         'rank': int(rank['@value']) if rank['@value'] != 'Not Ranked' else None
                     })
-            
-            subcategory_1 = game_subcategories[0]['name'] if len(game_subcategories) > 0 else ''
+
+            subcategory_1 = game_subcategories[0]['name'] if len(game_subcategories) > 0 else None
             rank_subcategory_1 = game_subcategories[0]['rank'] if len(game_subcategories) > 0 else None
-            subcategory_2 = game_subcategories[1]['name'] if len(game_subcategories) > 1 else ''
+            subcategory_2 = game_subcategories[1]['name'] if len(game_subcategories) > 1 else None
             rank_subcategory_2 = game_subcategories[1]['rank'] if len(game_subcategories) > 1 else None
 
             # Additional stats with type conversion
@@ -208,8 +248,9 @@ class BGG:
                 "avg_weight": [avg_weight],
                 "num_weights": [num_weights],
                 "owned_by": [owned_by],
-                "wished_by": [wished_by]
-            })
+                "wished_by": [wished_by]},
+                schema=SCHEMA
+            )
 
             return df
 
@@ -264,7 +305,6 @@ class BGG:
                         language_dependence = result['@value']
                         max_votes = votes
         
-        language_dependence = language_dependence if language_dependence else ''
         return best_numplayers, recommended_numplayers, suggested_playerage, language_dependence
 
     def _extract_links(self, game_info: dict, link_type: str) -> List[str]:
@@ -287,8 +327,9 @@ class BGG:
         start_id = 1 if self.control_data["first_execution"] else self.control_data["last_id"]
         current_id = start_id
         dataframes = []
+        consecutive_failures = 0
 
-        while not self.failure:
+        while consecutive_failures < 50:
             try:
                 batch_ids = list(range(current_id, current_id + batch_size))
                 tasks = [self.get_game_data(game_id) for game_id in batch_ids]
@@ -299,34 +340,28 @@ class BGG:
                 if valid_results:
                     dataframes.extend(valid_results)
                     print(f"Processed batch {current_id} to {current_id + batch_size - 1}")
+                    consecutive_failures = 0
                 else:
-                    self.failure = True
-                    to_save_id = current_id
-                    break
-
-                if len(valid_results) != batch_size:
-                    self.failure = True
-                    to_save_id = current_id + len(valid_results)
-                    break
+                    consecutive_failures += 1
 
                 current_id += batch_size
 
             except Exception as e:
                 print(f"Error processing batch starting at ID {current_id}: {str(e)}")
-                self.failure = True
-                to_save_id = current_id
                 break
-
+        
         if dataframes:
             self.global_df = pl.concat(dataframes)
-            self.global_df.write_json(f"bgg_games_{start_id}_to_{to_save_id}.json")
 
         self.control_data.update({
             "first_execution": False,
-            "last_id": to_save_id
+            "last_id": current_id
         })
         self._save_control_data()
 
+        return self.global_df
+    
 async def main(force_restart: bool = False):
     client = BGG()
-    await client.continuous_scan(force_restart=force_restart)
+    df = await client.continuous_scan(force_restart=force_restart)
+    return df
