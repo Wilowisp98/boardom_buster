@@ -419,11 +419,10 @@ async def main_bgg(force_restart: bool = False):
         - Otherwise, loads the most recent file and appends new data
     """
     start_time = time.time()
-    logger = logging.getLogger('BGGLogger')
-    
-    logger.info("Starting BGG data collection process")
     
     client = BGG()
+    client.logger.info("Starting BGG data collection process")
+
     data_dir = os.path.join(os.path.dirname(__file__), 'data')
     os.makedirs(data_dir, exist_ok=True)
     
@@ -431,40 +430,40 @@ async def main_bgg(force_restart: bool = False):
     
     try:
         if force_restart:
-            logger.info("Force restart requested - starting fresh data collection")
+            client.logger.info("Force restart requested - starting fresh data collection")
             df, df_size = await client.continuous_scan(force_restart=True)
             output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
             df.write_parquet(output_file)
-            logger.info(f"Wrote new data file: {output_file}")
+            client.logger.info(f"Wrote new data file: {output_file}")
         else:
             if not existing_files:
-                logger.info("No existing data files found - starting fresh collection")
+                client.logger.info("No existing data files found - starting fresh collection")
                 df, df_size = await client.continuous_scan(force_restart=False)
                 output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
                 df.write_parquet(output_file)
-                logger.info(f"Wrote new data file: {output_file}")
+                client.logger.info(f"Wrote new data file: {output_file}")
             else:
                 latest_file = max(existing_files, key=lambda x: int(x.split('_')[2].split('.')[0]))
                 latest_file_path = os.path.join(data_dir, latest_file)
-                logger.info(f"Loading existing data from {latest_file}")
+                client.logger.info(f"Loading existing data from {latest_file}")
                 existing_df = pl.read_parquet(latest_file_path)
-                logger.info(f"Existing data contains {existing_df.height} games")
+                client.logger.info(f"Existing data contains {existing_df.height} games")
                 
-                logger.info("Starting collection of new data")
+                client.logger.info("Starting collection of new data")
                 new_df, df_size = await client.continuous_scan(force_restart=False)
                 df = pl.concat([existing_df, new_df])
                 
                 output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
                 df.write_parquet(output_file)
-                logger.info(f"Wrote updated data file: {output_file}")
+                client.logger.info(f"Wrote updated data file: {output_file}")
         
         execution_time = time.time() - start_time
-        logger.info(f"Found {df_size} new boardgames")
-        logger.info(f"Total dataset size: {df.height} boardgames")
-        logger.info(f"Total execution time: {execution_time / 60:.2f} minutes")
+        client.logger.info(f"Found {df_size} new boardgames")
+        client.logger.info(f"Total dataset size: {df.height} boardgames")
+        client.logger.info(f"Total execution time: {execution_time / 60:.2f} minutes")
         
         return df
         
     except Exception as e:
-        logger.error("Critical error in main execution", exc_info=True)
+        client.logger.error("Critical error in main execution", exc_info=True)
         raise
