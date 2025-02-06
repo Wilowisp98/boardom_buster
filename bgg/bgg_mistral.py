@@ -294,7 +294,10 @@ class BGG:
             self.logger.info("Forcing restart of scanning process")
             self.control_data = {"first_execution": True, "last_id": 1}
 
-        start_id = 1 if self.control_data["first_execution"] else self.control_data["last_id"]
+        if self.control_data["first_execution"]:
+            start_id = 1 
+        else:
+            self.control_data["last_id"]
         current_id = start_id
         dataframes = []
         consecutive_failures = 0
