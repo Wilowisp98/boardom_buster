@@ -8,22 +8,22 @@ class CustomLogger:
     A custom logger class that provides logging functionality with separate files for
     regular logs and errors, using date-stamped filenames and rotation.
     """
-    
+
     def __init__(self, logger_name: str = 'CustomLogger', log_level: int = logging.DEBUG):
         """
         Initialize the custom logger with specified name and log level.
-        
+
         Args:
             logger_name (str): Name of the logger instance
             log_level (int): Logging level (e.g., logging.DEBUG, logging.INFO)
         """
         self.logger = logging.getLogger(logger_name)
         self.logger.setLevel(log_level)
-        
+
         # Avoid adding handlers if they already exist
-        if not self.logger.handlers:
+        if not self.logger.hasHandlers():
             self._setup_logging()
-    
+
     def _setup_logging(self):
         """
         Set up logging configuration with separate handlers for regular logs and errors.
@@ -38,7 +38,7 @@ class CustomLogger:
 
         # Get current date for log files
         current_date = datetime.now().strftime('%Y%m%d')
-        
+
         # Create formatters
         log_formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -81,7 +81,7 @@ class CustomLogger:
     def get_logger(self) -> logging.Logger:
         """
         Get the configured logger instance.
-        
+
         Returns:
             logging.Logger: Configured logger instance
         """
@@ -91,11 +91,11 @@ class CustomLogger:
 def get_logger(name: str = 'CustomLogger', level: int = logging.DEBUG) -> logging.Logger:
     """
     Get a configured logger instance.
-    
+
     Args:
         name (str): Name for the logger
         level (int): Logging level
-        
+
     Returns:
         logging.Logger: Configured logger instance
     """
