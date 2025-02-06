@@ -22,6 +22,7 @@ IDEAS:
         - 3 would come from the 2 commons.
         - 2 would come from the one that was not in common.
 
+- add the DF schema to the config file.
 
 
 [{

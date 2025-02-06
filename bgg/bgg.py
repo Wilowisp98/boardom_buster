@@ -7,8 +7,7 @@ from typing import List, Optional, Tuple
 import polars as pl
 from datetime import datetime
 import time
-import logging
-from . import logger
+from .. import logger
 
 SCHEMA = pl.Schema({
     "game_name": pl.Utf8,
