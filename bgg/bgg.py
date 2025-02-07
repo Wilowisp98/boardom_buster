@@ -318,7 +318,8 @@ class BGG:
         if self.control_data["first_execution"]:
             start_id = 1 
         else:
-            self.control_data["last_id"]
+            start_id = self.control_data["last_id"]
+
         current_id = start_id
         dataframes = []
         consecutive_failures = 0
@@ -327,7 +328,7 @@ class BGG:
 
         # DO NOT FORGET TO REMOVE CURRENT_ID CONDITION
         # while consecutive_failures < 50:
-        while current_id <= 100:
+        while current_id <= 200:
             try:
                 batch_ids = list(range(current_id, current_id + batch_size))
                 self.logger.info(f"Processing batch: IDs {current_id} to {current_id + batch_size - 1}")
@@ -347,7 +348,7 @@ class BGG:
 
                 current_id += batch_size
 
-            except Exception as e:
+            except Exception as _:
                 self.logger.error(f"Error processing batch starting at ID {current_id}", exc_info=True)
                 break
 
@@ -397,16 +398,16 @@ async def main_bgg(force_restart: bool = False):
             df, df_size = await client.continuous_scan(force_restart=True)
             output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
             df.write_parquet(output_file)
-            client.logger.info(f"Wrote new data file: {output_file}")
+            client.logger.info(f"Wrote updated data file: {os.path.basename(output_file)}")
         else:
             if not existing_files:
                 client.logger.info("No existing data files found - starting fresh collection")
                 df, df_size = await client.continuous_scan(force_restart=False)
                 output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
                 df.write_parquet(output_file)
-                client.logger.info(f"Wrote new data file: {output_file}")
+                client.logger.info(f"Wrote updated data file: {os.path.basename(output_file)}")
             else:
-                latest_file = max(existing_files, key=lambda x: int(x.split('_')[2].split('.')[0]))
+                latest_file = max(existing_files, key=lambda x: int(x.split('_')[3].split('.')[0]))
                 latest_file_path = os.path.join(data_dir, latest_file)
                 client.logger.info(f"Loading existing data from {latest_file}")
                 existing_df = pl.read_parquet(latest_file_path)
@@ -418,7 +419,7 @@ async def main_bgg(force_restart: bool = False):
 
                 output_file = os.path.join(data_dir, f"{client.base_filename}_{client.current_date}.parquet")
                 df.write_parquet(output_file)
-                client.logger.info(f"Wrote updated data file: {output_file}")
+                client.logger.info(f"Wrote updated data file: {os.path.basename(output_file)}")
 
         execution_time = time.time() - start_time
         client.logger.info(f"Found {df_size} new boardgames")

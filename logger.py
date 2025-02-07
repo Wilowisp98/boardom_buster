@@ -49,6 +49,7 @@ class CustomLogger:
         log_file = os.path.join(log_dir, f'log_{current_date}.log')
         file_handler = RotatingFileHandler(
             log_file,
+            mode='w',
             maxBytes=10485760,
             backupCount=5
         )
@@ -97,6 +98,7 @@ class CustomLogger:
         # Create and add the error handler
         self.error_handler = ErrorHandler(
             error_file,
+            mode="w",
             maxBytes=10485760,
             backupCount=5
         )
