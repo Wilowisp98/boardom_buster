@@ -32,6 +32,7 @@ class BGG:
         self.global_df = None
         self.current_date = int(datetime.now().strftime('%Y%m%d'))
         self.base_filename = "raw_bgg_data"
+        self.max_chunk_size = 10
 
     def _load_control_data(self) -> dict:
         """
@@ -61,25 +62,22 @@ class BGG:
         """
         with open(self.control_file, 'w') as f:
             json.dump(self.control_data, f)
-
-    async def get_game_data(self, game_id: int, retry_delay: int = 5, max_retries: int = 3) -> pl.DataFrame:
+        
+    async def get_games_data(self, game_ids: List[int], retry_delay: int = 5, max_retries: int = 3) -> List[pl.DataFrame]:
         """
-        Fetches detailed information for a specific game from the BGG API.
+        Fetches detailed information for multiple games in a single API request.
 
         Args:
-            game_id (int): The BGG game ID.
+            game_ids (List[int]): List of BGG game IDs to fetch.
             retry_delay (int): Seconds to wait between retries. Defaults to 5.
             max_retries (int): Maximum number of retry attempts. Defaults to 3.
 
         Returns:
-            pl.DataFrame: A DataFrame containing the processed game data.
-
-        Raises:
-            Exception: If the API request fails or data processing fails.
+            List[pl.DataFrame]: List of DataFrames containing the processed game data.
         """
         endpoint = f"{self.base_url}/thing"
         params = {
-            "id": game_id,
+            "id": ",".join(map(str, game_ids)),
             "type": "boardgame",
             "stats": 1
         }
@@ -94,27 +92,32 @@ class BGG:
                     if response.status_code == 200:
                         response_data = xmltodict.parse(response.content)
                         if 'items' not in response_data or not response_data['items'].get('item'):
-                            self.logger.warning(f"No data found for game ID {game_id}")
-                            return None
-                        self.logger.debug(f"Successfully retrieved data for game ID {game_id}")
-                        return self._prepare_data(response_data)
+                            self.logger.warning(f"No data found for game IDs {game_ids[0]} to {game_ids[-1]}")
+                            return []
+                        
+                        # Handle both single and multiple items
+                        items = response_data['items']['item']
+                        if not isinstance(items, list):
+                            items = [items]
+                            
+                        self.logger.debug(f"Successfully retrieved data for {len(items)} games")
+                        return [self._prepare_data({'items': {'item': item}}) for item in items if item]
                     
                     elif response.status_code == 429:
-                        self.logger.info(f"Request queued for game ID {game_id}, attempt {attempt + 1}/{max_retries}")
+                        self.logger.info(f"Request queued for game IDs {game_ids[0]} to {game_ids[-1]}, attempt {attempt + 1}/{max_retries}")
                         await asyncio.sleep(retry_delay * (max_retries - attempt))
-
                     else:
-                        self.logger.error(f"HTTP {response.status_code} for game ID {game_id}")
+                        self.logger.error(f"HTTP {response.status_code} for game IDs {game_ids[0]} to {game_ids[-1]}")
                         response.raise_for_status()
 
                 except httpx.HTTPStatusError as e:
-                    self.logger.error(f"HTTP error retrieving game ID {game_id}: {str(e)}", exc_info=True)
+                    self.logger.error(f"HTTP error retrieving game IDs {game_ids[0]} to {game_ids[-1]}: {str(e)}", exc_info=True)
                 except Exception as e:
-                    self.logger.error(f"Error retrieving game ID {game_id}: {str(e)}", exc_info=True)
+                    self.logger.error(f"Error retrieving game IDs {game_ids[0]} to {game_ids[-1]}: {str(e)}", exc_info=True)
                     if attempt == max_retries - 1:
                         raise
 
-        raise Exception(f"Failed to get response for game ID {game_id} after {max_retries} attempts")
+        raise Exception(f"Failed to get response for game IDs{game_ids[0]} to {game_ids[-1]} after {max_retries} attempts")
 
     def _prepare_data(self, response_data: dict) -> pl.DataFrame:
         """
@@ -291,52 +294,42 @@ class BGG:
         """
         return [link['@value'] for link in game_info.get('link', []) if link['@type'] == link_type]
 
-    async def continuous_scan(self, force_restart: bool = False, batch_size: int = 10) -> None:
+    async def continuous_scan(self, force_restart: bool = False, batch_size: int = 100) -> None:
         """
-        Continuously scans and retrieves game data in batches, handling the process in an asynchronous manner.
-        Maintains state between executions using control data and combines results into a global DataFrame.
+        Continuously scans and retrieves game data in batches.
 
         Args:
-            force_restart (bool, optional): If True, resets the control data to start scanning from ID 1.
-                Defaults to False.
-            batch_size (int, optional): Number of games to process in each batch. Defaults to 10.
-
-        Returns:
-            polars.DataFrame: A concatenated DataFrame containing all successfully retrieved game data.
-
-        Notes:
-            - Uses control data to track progress between executions
-            - Processes games in batches asynchronously
-            - Stops after 50 consecutive failed attempts
-            - Saves progress periodically through control data
-            - Handles exceptions and failed requests gracefully
+            force_restart (bool): If True, resets the control data to start scanning from ID 1.
+            batch_size (int): Number of games to process in each API request. Defaults to 50.
         """
         if force_restart:
             self.logger.info("Forcing restart of scanning process")
             self.control_data = {"first_execution": True, "last_id": 1}
 
-        if self.control_data["first_execution"]:
-            start_id = 1 
-        else:
-            start_id = self.control_data["last_id"]
-
+        start_id = 1 if self.control_data["first_execution"] else self.control_data["last_id"]
         current_id = start_id
         dataframes = []
         consecutive_failures = 0
 
         self.logger.info(f"Starting continuous scan from ID {start_id}")
 
-        # DO NOT FORGET TO REMOVE CURRENT_ID CONDITION
         # while consecutive_failures < 50:
         while current_id <= 200:
             try:
                 batch_ids = list(range(current_id, current_id + batch_size))
                 self.logger.info(f"Processing batch: IDs {current_id} to {current_id + batch_size - 1}")
 
-                tasks = [self.get_game_data(game_id) for game_id in batch_ids]
+                # Single API request for the entire batch
+                chunks_ids = [batch_ids[i:i+self.max_chunk_size] for i in range(0, len(batch_ids), self.max_chunk_size)]
+                tasks = [self.get_games_data(chunk_ids) for chunk_ids in chunks_ids]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                valid_results = [df for df in results if isinstance(df, pl.DataFrame)]
+                valid_results = []
+                for result in results:
+                    if isinstance(result, Exception):
+                        self.logger.error(f"Chunk failed: {str(result)}")
+                    elif result:
+                        valid_results.extend(result)
 
                 if valid_results:
                     dataframes.extend(valid_results)
@@ -348,8 +341,8 @@ class BGG:
 
                 current_id += batch_size
 
-            except Exception as _:
-                self.logger.error(f"Error processing batch starting at ID {current_id}", exc_info=True)
+            except Exception as e:
+                self.logger.error(f"Error processing batch starting at ID {current_id}: {str(e)}", exc_info=True)
                 break
 
         if dataframes:
