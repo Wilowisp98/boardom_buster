@@ -6,8 +6,14 @@ from datetime import datetime
 import numpy as np
 
 # Constants for mappings
-AGE_MAPPING: Dict[str, int] = {"Unknown": 0, "Kids": 1, "Family": 2, "Teen": 3, "Adult": 4}
-PLAYING_TIME_MAPPING: Dict[str, int] = {"Unknown": 0, "Short": 1, "Medium": 2, "Long": 3, "Very Long": 4}
+LANGUAGE_DEPENDENCY_MAPPING = {
+    'No necessary in-game text': 'none',
+    'Some necessary text - easily memorized or small crib sheet': 'low',
+    'Moderate in-game text - needs crib sheet or paste ups': 'medium',
+    'Extensive use of text - massive conversion needed to be playable': 'high',
+    'Unplayable in another language': 'extreme',
+    None: None
+}
 POPULARITY_WEIGHTS: Dict[str, float] = {
     "owned_by": 0.35,
     "wished_by": 0.15,
@@ -25,6 +31,40 @@ UNNECESSARY_COLUMNS: List[str] = [
     "max_playtime",
     "min_age"
 ]
+
+def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, int]) -> pl.DataFrame:
+    """
+    General function to encode a categorical column using a provided mapping dictionary.
+
+    Args:
+        df (pl.DataFrame): Input DataFrame.
+        column_name (str): Name of the column to encode.
+        mapping_dict (Dict[str, int]): Dictionary for mapping categories to numerical values.
+
+    Returns:
+        pl.DataFrame: Updated DataFrame with the encoded column.
+
+    Example:
+        >>> df = pl.DataFrame({"age_group": ["Kids", "Family", "Teen", "Adult"]})
+        >>> age_mapping = {"Kids": 0, "Family": 1, "Teen": 2, "Adult": 3}
+        >>> encode_column(df, "age_group", age_mapping)
+        shape: (4, 2)
+        ┌──────────┬─────────────┐
+        │ age_group│ age_encoded │
+        │ ---      │ ---         │
+        │ str      │ i64         │
+        ╞══════════╪═════════════╡
+        │ Kids     │ 0           │
+        │ Family   │ 1           │
+        │ Teen     │ 2           │
+        │ Adult    │ 3           │
+        └──────────┴─────────────┘
+    """
+    try:
+        encoded_col = pl.col(column_name).replace(mapping_dict).cast(pl.Int32).alias(f"{column_name}_encoded")
+        return df.with_columns(encoded_col)
+    except Exception as e:
+        raise ValueError(f"Error encoding column '{column_name}': {e}")
 
 def clean_text_column(df: pl.DataFrame, column: str) -> pl.DataFrame:
     """
@@ -369,6 +409,8 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
         # df = encode_column(df, "playing_time_group", PLAYING_TIME_MAPPING)
         df = normalize_player_count(df)
         df = one_hot_encode(df, ['categories'], 'GAME_CAT')
+        df = encode_column(df, 'language_dependence_description', LANGUAGE_DEPENDENCY_MAPPING)
+        df = one_hot_encode(df, ['language_dependence_description_encoded'], 'LANGUAGE_DEPENDENCY')
 
         return df
     except Exception as e:
@@ -376,36 +418,5 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
     
 
 
-# def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, int]) -> pl.DataFrame:
-#     """
-#     General function to encode a categorical column using a provided mapping dictionary.
-# 
-#     Args:
-#         df (pl.DataFrame): Input DataFrame.
-#         column_name (str): Name of the column to encode.
-#         mapping_dict (Dict[str, int]): Dictionary for mapping categories to numerical values.
-# 
-#     Returns:
-#         pl.DataFrame: Updated DataFrame with the encoded column.
-# 
-#     Example:
-#         >>> df = pl.DataFrame({"age_group": ["Kids", "Family", "Teen", "Adult"]})
-#         >>> age_mapping = {"Kids": 0, "Family": 1, "Teen": 2, "Adult": 3}
-#         >>> encode_column(df, "age_group", age_mapping)
-#         shape: (4, 2)
-#         ┌──────────┬─────────────┐
-#         │ age_group│ age_encoded │
-#         │ ---      │ ---         │
-#         │ str      │ i64         │
-#         ╞══════════╪═════════════╡
-#         │ Kids     │ 0           │
-#         │ Family   │ 1           │
-#         │ Teen     │ 2           │
-#         │ Adult    │ 3           │
-#         └──────────┴─────────────┘
-#     """
-#     try:
-#         encoded_col = pl.col(column_name).replace(mapping_dict).cast(pl.Int32).alias(f"{column_name}_encoded")
-#         return df.with_columns(encoded_col)
-#     except Exception as e:
-#         raise ValueError(f"Error encoding column '{column_name}': {e}")
+# AGE_MAPPING: Dict[str, int] = {"Unknown": 0, "Kids": 1, "Family": 2, "Teen": 3, "Adult": 4}
+# PLAYING_TIME_MAPPING: Dict[str, int] = {"Unknown": 0, "Short": 1, "Medium": 2, "Long": 3, "Very Long": 4}
