@@ -23,3 +23,5 @@ IDEAS:
         - 2 would come from the one that was not in common.
 
 - add the DF schema to the config file. X
+- add difficulty to the clusters maybe
+- save the clusters somewhere so I dont need to recalculate them multiple times

@@ -279,7 +279,10 @@ class BGG:
                     if isinstance(result, dict):  # Ensure result is a dictionary
                         votes = int(result['@numvotes'])
                         if votes > max_votes:
-                            suggested_playerage = int(result['@value'])
+                            if result['@value'] == '21 and up':
+                                suggested_playerage = 21
+                            else:
+                                suggested_playerage = int(result['@value'])
                             max_votes = votes
 
             elif poll['@name'] == 'language_dependence':
@@ -327,7 +330,7 @@ class BGG:
         self.logger.info(f"Starting continuous scan from ID {start_id}")
 
         # while consecutive_failures < self.config.max_consecutive_failures:
-        while current_id <= 5000:
+        while current_id <= 10000:
             try:
                 batch_ids = list(range(current_id, current_id + batch_size))
                 self.logger.info(f"Processing batch: IDs {current_id} to {current_id + batch_size - 1}")

@@ -13,12 +13,27 @@ if __name__ == "__main__":
     
     import polars as pl
     df = pl.read_json("game_data.json")
-    game_names = df.sample(n=10, shuffle=True).select("game_name").to_series().to_list()
+    # game_names = df.sample(n=10, shuffle=True).select("game_name").to_series().to_list()
+    game_names = ['CATAN']    
     bins = bin_board_games(df, game_names)
     clusters = cluster_all_games(df, 5)
     recomendations = recommend_games(clusters, bins, df)
 
-    print(recomendations)
+    for bin_number, data in recomendations.items():
+        games = data['games_in_bin']
+        recommended = data['recommended_games']
+
+        # Handle singular/plural for better grammar
+        if len(games) == 1:
+            print(f"If you like {games[0]}, then you might enjoy:")
+        else:
+            game_list = ", ".join(games)
+            print(f"If you like {game_list}, then you might enjoy:")
+
+        # Print recommendations with bullet points
+        for game in recommended:
+            print(f"• {game}")
+        print()
     
 
 

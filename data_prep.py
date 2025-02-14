@@ -78,6 +78,7 @@ def add_popularity_score(df: pl.DataFrame) -> pl.DataFrame:
 def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, int]) -> pl.DataFrame:
     """
     General function to encode a categorical column using a provided mapping dictionary.
+    Rows with null values in the specified column are excluded.
 
     Args:
         df (pl.DataFrame): Input DataFrame.
@@ -88,7 +89,7 @@ def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, in
         pl.DataFrame: Updated DataFrame with the encoded column.
 
     Example:
-        >>> df = pl.DataFrame({"age_group": ["Kids", "Family", "Teen", "Adult"]})
+        >>> df = pl.DataFrame({"age_group": ["Kids", "Family", "Teen", "Adult", None]})
         >>> age_mapping = {"Kids": 0, "Family": 1, "Teen": 2, "Adult": 3}
         >>> encode_column(df, "age_group", age_mapping)
         shape: (4, 2)
@@ -104,6 +105,9 @@ def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, in
         └──────────┴─────────────┘
     """
     try:
+        # Filter out rows where the column is null
+        df_filtered = df.filter(pl.col(column_name).is_not_null())
+        
         # Check if all values in mapping are integers
         all_integers = all(isinstance(v, int) for v in mapping_dict.values())
         
@@ -114,7 +118,7 @@ def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, in
         if all_integers:
             encoded_col = encoded_col.cast(pl.Int32)
             
-        return df.with_columns(encoded_col.alias(f"{column_name}_encoded"))
+        return df_filtered.with_columns(encoded_col.alias(f"{column_name}_encoded"))
     except Exception as e:
         raise ValueError(f"Error encoding column '{column_name}': {e}")
 
@@ -174,6 +178,7 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
     """
     Perform one-hot encoding on one or multiple categorical columns that may contain either single values
     or lists of values. Creates binary indicator variables for each unique category across all specified columns.
+    Rows with no values in the specified columns are removed.
 
     Args:
         df (pl.DataFrame): Input DataFrame containing categorical columns.
@@ -184,6 +189,7 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
         pl.DataFrame: Original DataFrame with additional binary columns for one-hot encoding.
     """
     try:
+
         # Get all unique non-null values across specified columns
         all_unique_values = set()
         for column in columns:
@@ -212,7 +218,7 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
                 )
             all_unique_values.update(unique_values)
 
-        # Start with a copy of the original dataframe
+        # Start with a copy of the filtered dataframe
         result_df = df.clone()
 
         # Create binary columns for each unique value
@@ -249,17 +255,18 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
 def normalize_play_age(df: pl.DataFrame) -> pl.DataFrame:
     """
     Normalize the suggested play age into broader categories: Kids, Family, Teen, and Adult.
+    Exclude rows with "Unknown" age groups.
 
     Args:
         df (pl.DataFrame): Input DataFrame with the 'suggested_play_age' column.
 
     Returns:
-        pl.DataFrame: Updated DataFrame with an additional 'age_group' column.
+        pl.DataFrame: Updated DataFrame with an additional 'age_group' column, excluding "Unknown" rows.
 
     Example:
         >>> df = pl.DataFrame({
-        ...     "game_name": ["Game A", "Game B", "Game C", "Game D"],
-        ...     "suggested_play_age": [6, 10, 14, 18]
+        ...     "game_name": ["Game A", "Game B", "Game C", "Game D", "Game E"],
+        ...     "suggested_play_age": [6, 10, 14, 18, None]
         ... })
         >>> df_normalized = normalize_play_age(df)
         >>> print(df_normalized)
@@ -284,23 +291,27 @@ def normalize_play_age(df: pl.DataFrame) -> pl.DataFrame:
             .otherwise(pl.lit("Unknown"))
             .alias("age_group")
         )
-        return df.with_columns(age_group_col)
+
+        age_grouped_df = df.with_columns(age_group_col)
+        age_grouped_df = age_grouped_df.filter(pl.col("age_group") != "Unknown")
+
+        return age_grouped_df
     except Exception as e:
         raise ValueError(f"Error normalizing play age: {e}")
 
 def normalize_playing_time(df: pl.DataFrame) -> pl.DataFrame:
     """
-    Categorize the playing time into buckets based on the duration.
+    Categorize the playing time into buckets based on the duration and exclude rows with "Unknown" playing time.
 
     Args:
         df (pl.DataFrame): Input DataFrame.
 
     Returns:
-        pl.DataFrame: Updated DataFrame with categorized playing time.
+        pl.DataFrame: Updated DataFrame with categorized playing time, excluding "Unknown" rows.
 
     Example:
-        >>> df = pl.DataFrame({"playing_time": [15, 45, 75, 140]})
-        >>> categorize_playing_time(df)
+        >>> df = pl.DataFrame({"playing_time": [15, 45, 75, 140, None, 2000]})
+        >>> normalize_playing_time(df)
         shape: (4, 2)
         ┌──────────────┬────────────────────────┐
         │ playing_time ┆ playing_time_group_col │
@@ -310,10 +321,11 @@ def normalize_playing_time(df: pl.DataFrame) -> pl.DataFrame:
         │ 15           ┆ Short                  │
         │ 45           ┆ Medium                 │
         │ 75           ┆ Long                   │
-        │ 140          ┆ Very Long              │
+        │ 140          ┆ Very_Long              │
         └──────────────┴────────────────────────┘
     """
     try:
+        # Categorize playing time
         playing_time_group_col = (
             pl.when(pl.col("playing_time") <= 30).then(pl.lit("Short"))
             .when((pl.col("playing_time") > 30) & (pl.col("playing_time") <= 60)).then(pl.lit("Medium"))
@@ -322,7 +334,14 @@ def normalize_playing_time(df: pl.DataFrame) -> pl.DataFrame:
             .otherwise(pl.lit("Unknown"))
             .alias("playing_time_group")
         )
-        return df.with_columns(playing_time_group_col)
+
+        # Add the categorized column to the DataFrame
+        df_with_group = df.with_columns(playing_time_group_col)
+
+        # Filter out rows with "Unknown" playing time
+        df_filtered = df_with_group.filter(pl.col("playing_time_group") != "Unknown")
+
+        return df_filtered
     except Exception as e:
         raise ValueError(f"Error categorizing playing time: {e}")
 
@@ -391,7 +410,9 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
         df = one_hot_encode(df, ['playing_time_group'], 'GAME_DURATION')
         # df = encode_column(df, "playing_time_group", PLAYING_TIME_MAPPING)
         df = normalize_player_count(df)
+        df = df.filter(pl.col("categories").list.len() > 0)
         df = one_hot_encode(df, ['categories'], 'GAME_CAT')
+        df = df.filter(pl.col("language_dependence_description").is_not_null())
         df = encode_column(df, 'language_dependence_description', LANGUAGE_DEPENDENCY_MAPPING)
         df = one_hot_encode(df, ['language_dependence_description_encoded'], 'LANGUAGE_DEPENDENCY')
 
