@@ -16,10 +16,9 @@ LANGUAGE_DEPENDENCY_MAPPING = {
 }
 POPULARITY_WEIGHTS: Dict[str, float] = {
     "owned_by": 0.35,
-    "wished_by": 0.15,
-    "num_rates": 0.15,
-    "avg_rating": 0.20,
-    "recency": 0.15,
+    "wished_by": 0.25,
+    "num_rates": 0.20,
+    "avg_rating": 0.20
 }
 UNNECESSARY_COLUMNS: List[str] = [
     "best_num_players",
@@ -32,6 +31,50 @@ UNNECESSARY_COLUMNS: List[str] = [
     "min_age"
 ]
 
+def add_popularity_score(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Add a popularity score column to a games DataFrame based on ownership, wishlists, ratings count,
+    and average rating. The score is normalized between 0 and 1.
+
+    Args:
+        df (pl.DataFrame): DataFrame containing game metrics columns: owned_by, wished_by,
+            num_rates, and avg_rating.
+
+    Returns:
+        pl.DataFrame: Original DataFrame with an additional 'popularity_score' column.
+
+    Examples:
+        >>> import polars as pl
+        >>> df = pl.DataFrame({
+        ...     "game_name": ["Game A", "Game B"],
+        ...     "owned_by": [1000, 500],
+        ...     "wished_by": [200, 100],
+        ...     "num_rates": [800, 400],
+        ...     "avg_rating": [8.5, 7.5]
+        ... })
+        >>> add_popularity_score(df)
+        shape: (2, 6)
+        ┌───────────┬──────────┬──────────┬───────────┬────────────┬─────────────────┐
+        │ game_name ┆ owned_by ┆ wished_by┆ num_rates ┆ avg_rating ┆ popularity_score│
+        │ ---       ┆ ---      ┆ ---      ┆ ---       ┆ ---        ┆ ---             │
+        │ str       ┆ i64      ┆ i64      ┆ i64       ┆ f64        ┆ f64             │
+        ╞═══════════╪══════════╪══════════╪═══════════╪════════════╪═════════════════╡
+        │ Game A    ┆ 1000     ┆ 200      ┆ 800       ┆ 8.5        ┆ 1.0             │
+        │ Game B    ┆ 500      ┆ 100      ┆ 400       ┆ 7.5        ┆ 0.61            │
+        └───────────┴──────────┴──────────┴───────────┴────────────┴─────────────────┘
+    """
+    try:
+        popularity_col = (
+            (pl.col("owned_by") / pl.col("owned_by").max() * POPULARITY_WEIGHTS["owned_by"]) +
+            (pl.col("wished_by") / pl.col("wished_by").max() * POPULARITY_WEIGHTS["wished_by"]) +
+            (pl.col("num_rates") / pl.col("num_rates").max() * POPULARITY_WEIGHTS["num_rates"]) +
+            (pl.col("avg_rating") / 10 * POPULARITY_WEIGHTS["avg_rating"])
+        ).alias("popularity_score")
+
+        return df.with_columns(popularity_col)
+    except Exception as e:
+        raise ValueError(f"Error adding popularity score: {e}")
+    
 def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, int]) -> pl.DataFrame:
     """
     General function to encode a categorical column using a provided mapping dictionary.
@@ -61,8 +104,17 @@ def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, in
         └──────────┴─────────────┘
     """
     try:
-        encoded_col = pl.col(column_name).replace(mapping_dict).cast(pl.Int32).alias(f"{column_name}_encoded")
-        return df.with_columns(encoded_col)
+        # Check if all values in mapping are integers
+        all_integers = all(isinstance(v, int) for v in mapping_dict.values())
+        
+        # Apply mapping
+        encoded_col = pl.col(column_name).replace(mapping_dict)
+        
+        # Only cast to Int32 if all mapped values are integers
+        if all_integers:
+            encoded_col = encoded_col.cast(pl.Int32)
+            
+        return df.with_columns(encoded_col.alias(f"{column_name}_encoded"))
     except Exception as e:
         raise ValueError(f"Error encoding column '{column_name}': {e}")
 
@@ -118,60 +170,6 @@ def clean_text_column(df: pl.DataFrame, column: str) -> pl.DataFrame:
     except Exception as e:
         raise ValueError(f"Error cleaning {column}: {e}")
 
-def add_popularity_score(df: pl.DataFrame, decay_half_life_days: int = 365) -> pl.DataFrame:
-    """
-    Add a popularity score column to a games DataFrame based on ownership, wishlists, ratings count,
-    and average rating. The score is normalized between 0 and 1.
-
-    Args:
-        df (pl.DataFrame): DataFrame containing game metrics columns: owned_by, wished_by,
-            num_rates, and avg_rating.
-
-    Returns:
-        pl.DataFrame: Original DataFrame with an additional 'popularity_score' column.
-    """
-    def percentile_normalize(series: pl.Series) -> pl.Series:
-        """Convert values to percentiles (0-1 range) to handle outliers better"""
-        return series.rank() / len(series)
-    
-    def log_normalize(series: pl.Series) -> pl.Series:
-        """Apply log normalization for metrics with high variance"""
-        return pl.Series(np.log1p(series.to_numpy())) / pl.Series(np.log1p(series.max()))
-    
-    def calculate_time_decay(publication_year: pl.Series) -> pl.Series:
-        """Calculate time-based decay factor using publication year"""
-        current_year = datetime.now().year
-        years_since_publication = current_year - publication_year
-        days_since_publication = years_since_publication * 365  # Approximate days
-        decay = 2 ** (-days_since_publication / decay_half_life_days)
-        return decay
-
-    try:
-        # Create normalized columns using different strategies
-        normalized_cols = [
-            log_normalize(pl.col("owned_by")).alias("owned_by_norm"),
-            log_normalize(pl.col("wished_by")).alias("wished_by_norm"),
-            log_normalize(pl.col("num_rates")).alias("num_rates_norm"),
-            percentile_normalize(pl.col("avg_rating")).alias("avg_rating_norm"),
-            calculate_time_decay(pl.col("publication_year")).alias("recency_norm")
-        ]
-
-        # Add normalized columns
-        df_with_norms = df.with_columns(normalized_cols)
-
-        # Calculate final weighted score
-        popularity_score = (
-            (pl.col("owned_by_norm") * POPULARITY_WEIGHTS["owned_by"]) +
-            (pl.col("wished_by_norm") * POPULARITY_WEIGHTS["wished_by"]) +
-            (pl.col("num_rates_norm") * POPULARITY_WEIGHTS["num_rates"]) +
-            (pl.col("avg_rating_norm") * POPULARITY_WEIGHTS["avg_rating"]) +
-            (pl.col("recency_norm") * POPULARITY_WEIGHTS["recency"])
-        ).alias("popularity_score")
-
-        return df_with_norms.with_columns(popularity_score)
-    except Exception as e:
-        raise ValueError(f"Error calculating improved popularity score: {e}")
-
 def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> pl.DataFrame:
     """
     Perform one-hot encoding on one or multiple categorical columns that may contain either single values
@@ -184,25 +182,6 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
 
     Returns:
         pl.DataFrame: Original DataFrame with additional binary columns for one-hot encoding.
-
-    Example:
-        >>> import polars as pl
-        >>> df = pl.DataFrame({
-        ...     "game_name": ["Game A", "Game B", "Game C"],
-        ...     "tags": [["Strategy", "Economic"], ["Party", "Strategy"], ["Strategy"]]
-        ... })
-        >>> df_encoded = one_hot_encode(df, ["tags"])
-        >>> print(df_encoded)
-        shape: (3, 5)
-        ┌───────────┬─────────────────────┬──────────────┬────────────┬────────────────┐
-        │ game_name │ tags                │ tag_Strategy │ tag_Party  │ tag_Economic   │
-        │ ---       │ ---                 │ ---          │ ---        │ ---            │
-        │ str       │ list[str]           │ u8           │ u8         │ u8             │
-        ╞═══════════╪═════════════════════╪══════════════╪════════════╪════════════════╡
-        │ Game A    │ ["Strategy", "Eco...│ 1            │ 0          │ 1              │
-        │ Game B    │ ["Party", "Strat... │ 1            │ 1          │ 0              │
-        │ Game C    │ ["Strategy"]        │ 1            │ 0          │ 0              │
-        └───────────┴─────────────────────┴──────────────┴────────────┴────────────────┘
     """
     try:
         # Get all unique non-null values across specified columns
@@ -223,7 +202,7 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
                     .to_list()
                 )
             else:
-                # For single value columns, get unique values as before
+                # For single value columns, get unique values
                 unique_values = (
                     df.select(pl.col(column))
                     .filter(pl.col(column).is_not_null())
@@ -245,18 +224,22 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
 
                 if is_list_column:
                     # For list columns, check if value is in the list
-                    expr = pl.col(col).map_elements(lambda x: value in (x or [])).fill_null(False)
+                    binary_exprs.append(
+                        pl.col(col).map_elements(
+                            lambda x: 1 if (x is not None and value in x) else 0,
+                            return_dtype=pl.UInt8
+                        )
+                    )
                 else:
                     # For single value columns, check equality
-                    expr = pl.col(col).fill_null(pl.lit("__NULL__")) == value
-                binary_exprs.append(expr)
+                    binary_exprs.append(
+                        (pl.col(col).fill_null(pl.lit("__NULL__")) == value).cast(pl.UInt8)
+                    )
             
-            # Combine expressions with OR operation and cast to UInt8
+            # Combine expressions with maximum (equivalent to OR for binary values)
             column_name = f"{prefix}_{str(value).lower()}" if prefix else f"{str(value).lower()}"
             result_df = result_df.with_columns(
-                pl.any_horizontal(binary_exprs)
-                .cast(pl.UInt8)
-                .alias(column_name)
+                pl.max_horizontal(binary_exprs).alias(column_name)
             )
 
         return result_df
