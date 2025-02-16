@@ -30,6 +30,8 @@ UNNECESSARY_COLUMNS: List[str] = [
     "max_playtime",
     "min_age"
 ]
+MIN_RATINGS: int = 100
+MIN_RATING: float = 6.0
 
 def add_popularity_score(df: pl.DataFrame) -> pl.DataFrame:
     """
@@ -400,6 +402,8 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
     """
     try:
         # df = df.drop(UNNECESSARY_COLUMNS)
+        df = (df.filter(pl.col("num_rates") >= MIN_RATINGS)
+                .filter(pl.col("avg_rating") >= MIN_RATING))
         df = clean_text_column(df, "description")
         df = add_popularity_score(df)
         # df = one_hot_encode(df, ['subcategory_1', 'subcategory_2'])

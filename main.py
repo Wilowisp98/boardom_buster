@@ -3,7 +3,7 @@ from bgg.bgg import main_bgg
 import data_prep as data_prep
 from model.binning_input_games import bin_board_games
 from model.cluster_games import cluster_all_games
-from model.recommend_games import BoardGameRecommender
+from model.recommend_games import BoardGameRecommendation
 
 if __name__ == "__main__":
     # force_restart = True
@@ -16,7 +16,7 @@ if __name__ == "__main__":
     game_names = ['Illuminati']    
     bins = bin_board_games(df, game_names)
     clusters = cluster_all_games(df, 5)
-    rec = BoardGameRecommender()
+    rec = BoardGameRecommendation()
     recommendations = rec.recommend_games(clusters, bins, df)
     
     # Print recommendations for each bin
@@ -35,7 +35,7 @@ if __name__ == "__main__":
         for game in recommended:
             print(f"• {game}")
             game_scores = data["recommendation_scores"][game]
-            explanation = rec.explain_recommendation(game_scores, games)
+            explanation = rec.explain_recommendation(game_scores)
             print(f"  Why? {explanation}")
         print()
     
