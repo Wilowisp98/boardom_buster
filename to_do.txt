@@ -25,3 +25,4 @@ IDEAS:
 - add the DF schema to the config file. X
 - add difficulty to the clusters maybe
 - save the clusters somewhere so I dont need to recalculate them multiple times
+- in the cluster, first order by distance to the current game/centroid
