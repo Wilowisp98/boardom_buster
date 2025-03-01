@@ -8,7 +8,8 @@ RELEVANT_COLUMNS: List[str] = [
     "AGE_GROUP",
     "GAME_CAT",
     "LANGUAGE_DEPENDENCY",
-    "GAME_DURATION"
+    "GAME_DURATION",
+    "GAME_DIFFICULTY"
 ]
 
 def get_feature_columns(df: pl.DataFrame) -> List[str]:
@@ -19,6 +20,7 @@ def get_feature_columns(df: pl.DataFrame) -> List[str]:
     for prefix in RELEVANT_COLUMNS:
         matching_cols = [col for col in df.columns if col.startswith(prefix)]
         feature_columns.extend(matching_cols)
+
     return feature_columns
 
 def cluster_all_games(df: pl.DataFrame, min_cluster_size: int = 10) -> List[Dict[str, Any]]:

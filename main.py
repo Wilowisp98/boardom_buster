@@ -38,7 +38,6 @@ if __name__ == "__main__":
             explanation = rec.explain_recommendation(game_scores)
             print(f"  Why? {explanation}")
         print()
-    
 
 
 

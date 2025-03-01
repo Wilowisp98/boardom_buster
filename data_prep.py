@@ -390,6 +390,53 @@ def normalize_player_count(df: pl.DataFrame) -> pl.DataFrame:
     except Exception as e:
         raise ValueError(f"Error normalizing player count: {str(e)}")
 
+def normalize_game_difficulty(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Categorize the playing time into buckets based on the duration and exclude rows with "Unknown" playing time.
+
+    Args:
+        df (pl.DataFrame): Input DataFrame.
+
+    Returns:
+        pl.DataFrame: Updated DataFrame with categorized playing time, excluding "Unknown" rows.
+
+    Example:
+        >>> df = pl.DataFrame({"playing_time": [15, 45, 75, 140, None, 2000]})
+        >>> normalize_playing_time(df)
+        shape: (4, 2)
+        ┌──────────────┬────────────────────────┐
+        │ playing_time ┆ playing_time_group_col │
+        │ ---          ┆ ---                    │
+        │ i64          ┆ str                    │
+        ╞══════════════╪════════════════════════╡
+        │ 15           ┆ Short                  │
+        │ 45           ┆ Medium                 │
+        │ 75           ┆ Long                   │
+        │ 140          ┆ Very_Long              │
+        └──────────────┴────────────────────────┘
+    """
+    try:
+        # Categorize playing time
+        game_difficulty_col = (
+            pl.when(pl.col("avg_weight") <= 1).then(pl.lit("Very Easy"))
+            .when((pl.col("avg_weight") > 1) & (pl.col("avg_weight") <= 2)).then(pl.lit("Easy"))
+            .when((pl.col("avg_weight") > 2) & (pl.col("avg_weight") <= 3)).then(pl.lit("Medium"))
+            .when((pl.col("avg_weight") > 3) & (pl.col("avg_weight") <= 4)).then(pl.lit("Hard"))
+            .when((pl.col("avg_weight") > 4) & (pl.col("avg_weight") <= 5)).then(pl.lit("Very Hard"))
+            .otherwise(pl.lit("Unknown"))
+            .alias("game_difficulty_group")
+        )
+
+        # Add the categorized column to the DataFrame
+        df_with_group = df.with_columns(game_difficulty_col)
+
+        # Filter out rows with "Unknown" playing time
+        df_filtered = df_with_group.filter(pl.col("game_difficulty_group") != "Unknown")
+
+        return df_filtered
+    except Exception as e:
+        raise ValueError(f"Error categorizing playing time: {e}")
+    
 def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
     """
     Run the complete data preparation pipeline.
@@ -413,6 +460,8 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
         df = normalize_playing_time(df)
         df = one_hot_encode(df, ['playing_time_group'], 'GAME_DURATION')
         # df = encode_column(df, "playing_time_group", PLAYING_TIME_MAPPING)
+        df = normalize_game_difficulty(df)
+        df = one_hot_encode(df, ['game_difficulty_group'], 'GAME_DIFFICULTY')
         df = normalize_player_count(df)
         df = df.filter(pl.col("categories").list.len() > 0)
         df = one_hot_encode(df, ['categories'], 'GAME_CAT')

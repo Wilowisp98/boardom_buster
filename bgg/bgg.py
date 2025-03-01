@@ -91,8 +91,6 @@ class BGG:
             "stats": 1
         }
 
-        await asyncio.sleep(2)
-
         async with httpx.AsyncClient() as client:
             for attempt in range(self.config.max_retries):
                 try:
@@ -110,6 +108,8 @@ class BGG:
                             items = [items]
 
                         self.logger.debug(f"Successfully retrieved data for {len(items)} games")
+
+                        await asyncio.sleep(3)
                         return [self._prepare_data({'items': {'item': item}}) for item in items if item]
 
                     elif response.status_code == 429:
@@ -310,7 +310,7 @@ class BGG:
         """
         return [link['@value'] for link in game_info.get('link', []) if link['@type'] == link_type]
 
-    async def continuous_scan(self, force_restart: bool = False, batch_size: int = 80) -> None:
+    async def continuous_scan(self, force_restart: bool = False, batch_size: int = 30) -> None:
         """
         Continuously scans and retrieves game data in batches.
 

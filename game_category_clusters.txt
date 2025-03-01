@@ -1,0 +1,101 @@
+
+Cluster 10:
+  - abstract strategy
+  - action / dexterity
+  - adventure
+  - age of reason
+  - ancient
+  - animals
+  - arabian
+  - aviation / flight
+  - bluffing
+  - civilization
+  - collectible components
+  - deduction
+  - dice
+  - economic
+  - educational
+  - electronic
+  - environmental
+  - fantasy
+  - farming
+  - fighting
+  - horror
+  - humor
+  - industry / manufacturing
+  - mafia
+  - math
+  - mature / adult
+  - maze
+  - medieval
+  - memory
+  - miniatures
+  - modern warfare
+  - murder / mystery
+  - music
+  - mythology
+  - nautical
+  - negotiation
+  - novel-based
+  - number
+  - pike and shot
+  - pirates
+  - political
+  - prehistoric
+  - print & play
+  - puzzle
+  - racing
+  - real-time
+  - religious
+  - renaissance
+  - science fiction
+  - spies / secret agents
+  - sports
+  - trains
+  - transportation
+  - travel
+  - trivia
+  - wargame
+  - zombies
+
+Cluster 4:
+  - card game
+  - children's game
+  - game system
+  - party game
+  - word game
+
+Cluster 8:
+  - city building
+  - territory building
+
+Cluster 3:
+  - american civil war
+  - civil war
+  - korean war
+  - vietnam war
+
+Cluster 2:
+  - world war i
+  - world war ii
+
+Cluster 9:
+  - movies / tv / radio theme
+  - video game theme
+
+Cluster 1:
+  - american indian wars
+  - american revolutionary war
+  - american west
+
+Cluster 5:
+  - napoleonic
+  - post-napoleonic
+
+Cluster 7:
+  - book
+  - comic book / strip
+
+Cluster 6:
+  - exploration
+  - space exploration

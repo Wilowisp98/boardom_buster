@@ -7,7 +7,8 @@ RELEVANT_COLUMNS: List[str] = [
     "AGE_GROUP",
     "GAME_CAT",
     "LANGUAGE_DEPENDENCY",
-    "GAME_DURATION"
+    "GAME_DURATION",
+    "GAME_DIFFICULTY"
 ]
 
 def bin_board_games(df: pl.DataFrame, input_board_games: List[str], threshold: float = 0.7) -> List[Dict[str, Any]]:

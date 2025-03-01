@@ -16,11 +16,12 @@ class RecommendationConfig:
     NOVELTY_PENALTY_YEARS: int = 5
     
     # Column configuration
-    COLUMN_PREFIXES: List[str] = field(default_factory=lambda: [
+    RELEVANT_COLUMNS: List[str] = field(default_factory=lambda: [
         "AGE_GROUP",
         "GAME_CAT",
         "LANGUAGE_DEPENDENCY",
-        "GAME_DURATION"
+        "GAME_DURATION",
+        "GAME_DIFFICULTY"
     ])
 
 class BoardGameRecommendation:
@@ -32,7 +33,7 @@ class BoardGameRecommendation:
         Gets all feature columns based on prefixes.
         """
         feature_columns = []
-        for prefix in self.config.COLUMN_PREFIXES:
+        for prefix in self.config.RELEVANT_COLUMNS:
             matching_cols = [col for col in df.columns if col.startswith(prefix)]
             feature_columns.extend(matching_cols)
         return feature_columns
