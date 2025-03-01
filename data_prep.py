@@ -6,6 +6,34 @@ from datetime import datetime
 import numpy as np
 
 # Constants for mappings
+BOARD_GAME_CATEGORIES = {
+'time_period_historical': ['ancient', 'medieval', 'renaissance', 'age of reason', 'american west', 'arabian', 'napoleonic', 'post-napoleonic', 'prehistoric'],
+'military_conflict': ['world war i', 'world war ii', 'korean war', 'vietnam war', 'modern warfare', 'american revolutionary war', 'american civil war', 'civil war', 'american indian wars', 'pike and shot', 'wargame'],
+'based_on_media': ['movies / tv / radio theme', 'video game theme', 'book', 'novel-based', 'comic book / strip', 'music'],
+'crime_espionage': ['murder / mystery', 'spies / secret agents', 'mafia'],
+'fantasy_supernatural': ['fantasy', 'science fiction', 'mythology', 'zombies', 'pirates'],
+'horror': ['horror'],
+'resource_management': ['economic', 'industry / manufacturing', 'farming', 'city building', 'civilization', 'territory building'],
+'card_game': ['card game'],
+'physical_components': ['dice', 'miniatures', 'collectible components'],
+'print_and_play': ['print & play'],
+'memory': ['memory'],
+'trivia': ['trivia'],
+'deduction': ['deduction'],
+'vehicles_movement': ['aviation / flight', 'trains', 'transportation', 'racing'],
+'negotiation': ['negotiation', 'bluffing'],
+'mental_skill': ['educational', 'math', 'number', 'word game', 'puzzle'],
+'social_entertainment': ['party game', 'children\'s game', 'humor', 'mature / adult'],
+'journey_discovery': ['adventure', 'exploration', 'travel', 'maze', 'nautical', 'space exploration'],
+'real_world_topics': ['religious', 'political', 'environmental', 'animals'],
+'sports': ['sports'],
+'fighting': ['fighting'],
+'abstract_strategy': ['abstract strategy'],
+'real_time': ['real-time'],
+'action_dexterity': ['action / dexterity'],
+'game_system': ['game system'],
+'electronic' : ['electronic']
+}
 LANGUAGE_DEPENDENCY_MAPPING = {
     'No necessary in-game text': 'none',
     'Some necessary text - easily memorized or small crib sheet': 'low',
@@ -32,6 +60,40 @@ UNNECESSARY_COLUMNS: List[str] = [
 ]
 MIN_RATINGS: int = 100
 MIN_RATING: float = 6.0
+
+def group_categories(df: pl.DataFrame) -> pl.DataFrame:
+    for group_name in BOARD_GAME_CATEGORIES.keys():
+        # Create column name with prefix
+        group_col_name = f"GAME_CAT_GROUP_{group_name}"
+
+        # Get list of categories in this group
+        categories_in_group = BOARD_GAME_CATEGORIES[group_name]
+
+        # Create expression to check if any category in this group is 1
+        group_expr = pl.lit(False)
+        for category in categories_in_group:
+            category_col = f"GAME_CAT_{category}"
+            if category_col in df.columns:
+                group_expr = group_expr | (pl.col(category_col) == 1)
+
+        # Create the new column: 1 if any category in group is 1, otherwise 0
+        df = df.with_columns(
+            pl.when(group_expr)
+            .then(pl.lit(1))
+            .otherwise(pl.lit(0))
+            .alias(group_col_name)
+        )
+
+    # Create a list of all original category columns to drop
+    all_categories = []
+    for categories_list in BOARD_GAME_CATEGORIES.values():
+        all_categories.extend(categories_list)
+
+    columns_to_drop = [f"GAME_CAT_{category}" for category in all_categories if f"GAME_CAT_{category}" in df.columns]
+
+    df = df.drop(columns_to_drop)
+
+    return df
 
 def add_popularity_score(df: pl.DataFrame) -> pl.DataFrame:
     """
@@ -465,6 +527,7 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
         df = normalize_player_count(df)
         df = df.filter(pl.col("categories").list.len() > 0)
         df = one_hot_encode(df, ['categories'], 'GAME_CAT')
+        df = group_categories(df)
         df = df.filter(pl.col("language_dependence_description").is_not_null())
         df = encode_column(df, 'language_dependence_description', LANGUAGE_DEPENDENCY_MAPPING)
         df = one_hot_encode(df, ['language_dependence_description_encoded'], 'LANGUAGE_DEPENDENCY')
