@@ -6,14 +6,13 @@ from datetime import datetime
 
 @dataclass
 class RecommendationConfig:
-    # Feature weights
-    POPULARITY_WEIGHT: float = 0.30
-    DISTANCE_WEIGHT: float = 0.35
-    RATING_QUALITY_WEIGHT: float = 0.25
-    RECENCY_WEIGHT: float = 0.10
+    # Feature weights - increased similarity importance
+    POPULARITY_WEIGHT: float = 0.25
+    DISTANCE_WEIGHT: float = 0.55  # Increased from 0.39
+    RATING_QUALITY_WEIGHT: float = 0.20
     
-    # Quality thresholds
-    NOVELTY_PENALTY_YEARS: int = 5
+    # Minimum threshold for similarity score
+    MIN_SIMILARITY_THRESHOLD: float = 0.4
     
     # Column configuration
     RELEVANT_COLUMNS: List[str] = field(default_factory=lambda: [
@@ -25,8 +24,8 @@ class RecommendationConfig:
     ])
 
 class BoardGameRecommendation:
-    def __init__(self, config: RecommendationConfig = RecommendationConfig()):
-        self.config = config
+    def __init__(self):
+        self.config = RecommendationConfig()
         
     def get_feature_columns(self, df: pl.DataFrame) -> List[str]:
         """
@@ -65,26 +64,6 @@ class BoardGameRecommendation:
 
         return (numerator / denominator).alias("rating_quality_score")
     
-    def calculate_recency_score(self) -> pl.Expr:
-        """
-        Calculates recency score with classic game consideration.
-        """
-        current_year = datetime.now().year
-        
-        # Calculate the age of the item (in years)
-        age_of_item = current_year - pl.col("publication_year")
-        
-        # Define the novelty penalty threshold (in years)
-        novelty_penalty_years = self.config.NOVELTY_PENALTY_YEARS * 2
-        
-        # Calculate the recency penalty as a proportion of the novelty penalty threshold
-        recency_penalty = (age_of_item / novelty_penalty_years).clip(0, 1)
-        
-        # Apply the recency penalty to the score (30% penalty for older items)
-        recency_score = 1 - (recency_penalty * 0.3)
-        
-        return recency_score.alias("recency_score")
-    
     def normalize_scores(self, df: pl.DataFrame, score_columns: List[str]) -> pl.DataFrame:
         """
         Normalizes score columns to 0-1 range.
@@ -113,95 +92,117 @@ class BoardGameRecommendation:
         # Apply all normalization expressions to the DataFrame
         return df.with_columns(normalization_expressions)
 
-    def recommend_games(self, clusters: List[Dict[str, Any]], bins: List[Dict[str, Any]], df: pl.DataFrame) -> Dict[int, Dict[str, Any]]:
+    def recommend_games(self, clusters: Dict[int, Dict[str, Any]], game_name: str, df: pl.DataFrame) -> Dict[str, Any]:
         """
-        Recommendation system
+        Recommendation system based on a single game name
+
+        Args:
+            clusters: Dictionary of clusters with format {id: {'constraint': str, 'game_names': List[str], 'count': int}}
+            game_name: Name of the game to base recommendations on
+            df: DataFrame containing game data
+
+        Returns:
+            Dictionary with recommended games and their scores
         """
         feature_columns = self.get_feature_columns(df)
-        recommendations = {}
+
+        # Find which cluster the input game belongs to
+        target_cluster_id = None
+        for cluster_id, cluster_data in clusters.items():
+            if game_name in cluster_data['game_names']:
+                target_cluster_id = cluster_id
+                break
+            
+        if target_cluster_id is None:
+            return {"error": f"Game '{game_name}' not found in any cluster"}
+
+        # Get candidate games (all games in the cluster except the input game)
+        cluster_games = set(clusters[target_cluster_id]['game_names'])
+        candidate_games = cluster_games - {game_name}
+
+        if not candidate_games:
+            return {"error": "No other games found in the same cluster"}
+
+        # Get candidate games dataframe
+        candidates_df = df.filter(pl.col("game_name").is_in(candidate_games))
+
+        if candidates_df.height == 0:
+            return {"error": "No candidate games found in the dataframe"}
+
+        # Get feature vector for the input game
+        input_game_row = df.filter(pl.col("game_name") == game_name)
+        if input_game_row.height == 0:
+            return {"error": f"Game '{game_name}' not found in the dataframe"}
+
+        # Extract features for the input game
+        input_game_features = np.array([input_game_row[0, col] for col in feature_columns])
+
+        # Calculate all scores
+        candidates_df = candidates_df.with_columns([
+            self.calculate_rating_quality_score()
+        ])
+
+        # Calculate distances
+        distances = []
+        for row in candidates_df.iter_rows(named=True):
+            game_features = np.array([row[col] for col in feature_columns])
+            distance = np.linalg.norm(input_game_features - game_features)
+            distances.append(1 / (1 + distance))  # Convert to similarity score
+
+        candidates_df = candidates_df.with_columns(
+            pl.Series("distance_score", distances)
+        )
+
+        # Normalize all scores
+        score_columns = [
+            "popularity_score",
+            "rating_quality_score",
+            "distance_score"
+        ]
+
+        normalized_df = self.normalize_scores(candidates_df, score_columns)
         
-        for bin in bins:
-            bin_centroid = np.array(bin['centroid'])
-            
-            # Find best cluster for the bin
-            best_cluster = min(
-                clusters,
-                key=lambda cluster: np.linalg.norm(bin_centroid - np.array(cluster['centroid']))
-            )
-            
-            # Get candidate games (cluster games minus bin games)
-            bin_games = set(bin['games'])
-            candidate_games = set(best_cluster['games']) - bin_games
-            
-            if not candidate_games:
-                continue
-                
-            # Get candidate games dataframe
-            candidates_df = df.filter(pl.col("game_name").is_in(candidate_games))
-            
-            if candidates_df.height == 0:
-                continue
-                
-            # Calculate all scores
-            candidates_df = candidates_df.with_columns([
-                self.calculate_rating_quality_score(),
-                self.calculate_recency_score()
-            ])
-            
-            # Calculate distances
-            distances = []
-            for row in candidates_df.iter_rows(named=True):
-                game_features = np.array([row[col] for col in feature_columns])
-                distance = np.linalg.norm(bin_centroid - game_features)
-                distances.append(1 / (1 + distance))  # Convert to similarity score
-            
-            candidates_df = candidates_df.with_columns(
-                pl.Series("distance_score", distances)
-            )
-            
-            # Normalize all scores
-            score_columns = [
-                "popularity_score",
-                "rating_quality_score",
-                "recency_score",
-                "distance_score"
-            ]
-            
-            normalized_df = self.normalize_scores(candidates_df, score_columns)
-            
-            # Calculate final score
-            final_score = (
-                (pl.col("popularity_score_normalized") * pl.lit(self.config.POPULARITY_WEIGHT)) +
-                (pl.col("distance_score_normalized") * pl.lit(self.config.DISTANCE_WEIGHT)) +
-                (pl.col("rating_quality_score_normalized") * pl.lit(self.config.RATING_QUALITY_WEIGHT)) +
-                (pl.col("recency_score_normalized") * pl.lit(self.config.RECENCY_WEIGHT))
-            ).alias("final_score")
-            
-            # Get top 5 recommendations
-            top_5_df = (
-                normalized_df
-                .with_columns(final_score)
-                .sort("final_score", descending=True)
-                .head(5)
-            )
-            
-            # Store recommendations
-            recommendations[bin['bin_id']] = {
-                "games_in_bin": list(bin_games),
-                "recommended_games": top_5_df["game_name"].to_list(),
-                "recommendation_scores": {
-                    row["game_name"]: {
-                        "final_score": row["final_score"],
-                        "popularity": row["popularity_score_normalized"],
-                        "similarity": row["distance_score_normalized"],
-                        "rating_quality": row["rating_quality_score_normalized"],
-                        "recency": row["recency_score_normalized"]
-                    }
-                    for row in top_5_df.iter_rows(named=True)
+        # Filter out games below minimum similarity threshold
+        normalized_df = normalized_df.filter(
+            pl.col("distance_score_normalized") >= self.config.MIN_SIMILARITY_THRESHOLD
+        )
+        
+        # If no games meet the threshold, return a message
+        if normalized_df.height == 0:
+            return {"error": f"No games similar enough to '{game_name}' were found"}
+
+        # Calculate final score
+        final_score = (
+            (pl.col("popularity_score_normalized") * pl.lit(self.config.POPULARITY_WEIGHT)) +
+            (pl.col("distance_score_normalized") * pl.lit(self.config.DISTANCE_WEIGHT)) +
+            (pl.col("rating_quality_score_normalized") * pl.lit(self.config.RATING_QUALITY_WEIGHT))
+        ).alias("final_score")
+
+        # Get top 5 recommendations
+        top_5_df = (
+            normalized_df
+            .with_columns(final_score)
+            .sort("final_score", descending=True)
+            .head(5)
+        )
+
+        # Format recommendations
+        result = {
+            "input_game": game_name,
+            "cluster_id": target_cluster_id,
+            "recommended_games": top_5_df["game_name"].to_list(),
+            "recommendation_scores": {
+                row["game_name"]: {
+                    "final_score": row["final_score"],
+                    "popularity": row["popularity_score_normalized"],
+                    "similarity": row["distance_score_normalized"],
+                    "rating_quality": row["rating_quality_score_normalized"]
                 }
+                for row in top_5_df.iter_rows(named=True)
             }
-        
-        return recommendations
+        }
+
+        return result
 
     def explain_recommendation(self, game_scores: Dict[str, float]) -> str:
         """
@@ -209,19 +210,19 @@ class BoardGameRecommendation:
         """
         explanations = []
         
+        # Always explain the similarity first
         if game_scores["similarity"] > 0.8:
-            explanations.append("This game is very similar to others in your selected group")
-
+            explanations.append("This game is very similar to your selected game")
         elif game_scores["similarity"] > 0.6:
-            explanations.append("This game shares some key characteristics with your selected games")
+            explanations.append("This game shares many characteristics with your selected game")
+        elif game_scores["similarity"] > 0.4:
+            explanations.append("This game has some similarities to your selected game")
+        
+        # Only mention popularity and ratings as secondary factors
+        if game_scores["popularity"] > 0.7 and len(explanations) > 0:
+            explanations.append("it's also popular among board game enthusiasts")
             
-        if game_scores["popularity"] > 0.8:
-            explanations.append("It's highly popular among board game enthusiasts")
-            
-        if game_scores["rating_quality"] > 0.8:
-            explanations.append("It's very well-rated by the community")
-            
-        if game_scores["recency"] > 0.8:
-            explanations.append("It's a recent release that's gaining attention")
-            
+        if game_scores["rating_quality"] > 0.7 and len(explanations) > 0:
+            explanations.append("it's well-rated by the community")
+        
         return " and ".join(explanations) + "."

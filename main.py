@@ -49,5 +49,29 @@ if __name__ == "__main__":
     model = bgClusters()
     clusters = model.fit(df, constraint_columns=constraint_columns, name_column="game_name")
 
+    rec = BoardGameRecommendation()
+    game_name = 'Splendor'
+    recommendations = rec.recommend_games(clusters.clusters, game_name, df)
+    
+    # Check if there was an error in the recommendations
+    if "error" in recommendations:
+        print(f"Error: {recommendations['error']}")
+    else:
+        # Print the input game and recommendations
+        print(f"If you like {recommendations['input_game']}, then you might enjoy:")
+        
+        # Print recommendations with bullet points and explanations
+        for game in recommendations['recommended_games']:
+            print(f"• {game}")
+            game_scores = recommendations["recommendation_scores"][game]
+            explanation = rec.explain_recommendation(game_scores)
+            print(f"  Why? {explanation}")
+        print()
+        
+        # Print additional information if desired
+        print(f"These games are from cluster {recommendations['cluster_id']}")
+
+
+
 
 
