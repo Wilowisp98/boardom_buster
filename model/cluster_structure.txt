@@ -1,0 +1,9 @@
+BGG/
+└── model/
+    └── clustering/
+        ├── __init__.py
+        ├── core.py            # Main clustering functionality  
+        ├── visualization.py   # Visualization functions
+        ├── persistence.py     # Caching and storage
+        ├── metrics.py         # Clustering evaluation metrics
+        └── utils.py           # Utility functions
