@@ -1,0 +1,28 @@
+IDEAS:
+- i do not want to fetch all the games everyday, maybe i can save the maximum id from the current execution and fetch from there in future executions.
+- check which columns might or might not be relevant:
+    - might add:
+        - popularity? (can create a metric from owned by, wished by and num of votes and rating) X
+        - tags (party game etc) X
+        - price (how relevant is the price for a board game)
+        - has expansions?
+        - player interaction (could be deducted from the description) 
+    - might not use in the model:
+        - description (at least how it looks now)
+        - artists 
+        - publishers (they can difer from country to country)
+        - familiess
+- when recommending a game based in more than 1 game:
+    - maybe check similarity between all the games used as input. X
+    - if there are any that look similar: X
+        - use them together. X
+    - when they are not similar: X 
+        - use them as distinct pieces X
+    - we could recommend a top 5 games, if for example, we got input of 3 and 2 are similar.
+        - 3 would come from the 2 commons.
+        - 2 would come from the one that was not in common.
+
+- add the DF schema to the config file. X
+- add difficulty to the clusters maybe
+- save the clusters somewhere so I dont need to recalculate them multiple times
+- in the cluster, first order by distance to the current game/centroid

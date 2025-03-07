@@ -1,6 +1,5 @@
 import polars as pl
 import numpy as np
-import hdbscan
 from typing import List, Dict, Any
 from sklearn.manifold import TSNE
 import polars as pl
@@ -161,6 +160,9 @@ class bgClusters:
         # Generate cluster descriptions
         self.generate_cluster_descriptions()
 
+        # Generate visualizations of clustering results
+        self._visualize_clustering_results()
+        
         # Save results to cache
         self._save_to_cache(cache_file)
 
@@ -353,8 +355,8 @@ class bgClusters:
         with redirect_stdout(captured_output):
             # Calculate adaptive optimal range based on data size
             data_size = len(data)
-            adaptive_min_k = max(2, int(np.log(data_size) / 2))
-            adaptive_max_k = max(5, int(np.sqrt(data_size) / 2))
+            adaptive_min_k = max(2, int(np.log(data_size)))
+            adaptive_max_k = max(5, int(np.sqrt(data_size)))
 
             # Set appropriate minimum k based on constraints and adaptive range
             if is_constraint:
@@ -369,7 +371,6 @@ class bgClusters:
             # Adjust max_k based on data dimensions and adaptive range
             feature_count = data.shape[1]
             max_k = min(max_k, feature_count, data_size - 1, adaptive_max_k * 2)  # Allow exploring up to 2x the adaptive max
-            print(min_k, max_k)
 
             if max_k < actual_min_k:
                 return max_k
@@ -436,8 +437,8 @@ class bgClusters:
             # Weighted voting - combine all metrics
             # Adjusted weights to account for removed metrics
             weights = {
-                'silhouette': 0.50,    # Good for finding well-separated clusters
-                'db': 0.20,            # Good for identifying distinct clusters
+                'silhouette': 0.35,    # Good for finding well-separated clusters
+                'db': 0.35,            # Good for identifying distinct clusters
                 'cluster_size': 0.30   # Weight for appropriate cluster count
             }
 
@@ -450,17 +451,9 @@ class bgClusters:
                 )
                 final_scores.append(score)
 
-            # Smooth the scores to reduce noise
-            window_size = min(3, len(final_scores))
-            smoothed_scores = np.convolve(final_scores, np.ones(window_size)/window_size, mode='valid')
-
-            # Find the optimal k
-            if len(smoothed_scores) > 0:
-                best_idx = np.argmax(smoothed_scores)
-                optimal_k = k_range[best_idx:best_idx+1][0]
-            else:
-                # Fallback to the k with best silhouette score
-                optimal_k = k_range[np.argmax(silhouette_scores)]
+            # Find the optimal k directly from final_scores without smoothing
+            best_idx = np.argmax(final_scores)
+            optimal_k = k_range[best_idx]
 
             # Create iteration history to show the progression of values
             history = {
@@ -562,11 +555,6 @@ class bgClusters:
                 plt.text(k_range[i], final_scores[i] + 0.02, f"{i+1}", 
                         ha='center', va='bottom', fontsize=9, color='darkblue')
 
-            if len(smoothed_scores) > 0:
-                # Adjust the x values for smoothed scores to account for the convolution window
-                smoothed_x = k_range[len(k_range)-len(smoothed_scores):]
-                plt.plot(smoothed_x, smoothed_scores, 's-', color='red', label='Smoothed Score')
-
             plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
             plt.xlabel('Number of Clusters (k)')
             plt.ylabel('Score')
@@ -644,30 +632,6 @@ class bgClusters:
     #############################################
     # CACHING AND PERSISTENCE
     #############################################
-    
-    def _generate_data_hash(self, df, constraint_columns):
-        """
-        Generate a unique hash based on data and constraints to identify the clustering job.
-        
-        Parameters:
-        -----------
-        df : polars.DataFrame
-            DataFrame containing board game data
-        constraint_columns : list
-            List of constraint column names
-            
-        Returns:
-        --------
-        str
-            MD5 hash of the input data characteristics
-        """
-        # Create a hash based on dataframe shape, column names, and constraint columns
-        hash_input = f"{df.shape}|{','.join(sorted(df.columns))}|{','.join(sorted(constraint_columns))}"
-        # Add a sample of actual data values to make hash more unique
-        data_sample = df.sample(min(100, df.height)).to_dict(as_series=False)
-        hash_input += str(data_sample)
-        # Create MD5 hash (sufficient for avoiding collisions in this context)
-        return hashlib.md5(hash_input.encode()).hexdigest()
 
     def _save_to_cache(self, cache_file):
         """
@@ -696,3 +660,254 @@ class bgClusters:
             pickle.dump(simplified_cache_data, f)
 
         print(f"Saved simplified cluster data to {cache_file}")
+
+    def _visualize_clustering_results(self):
+        """
+        Generate TSNE and PCA visualizations of the clustering results.
+        Saves visualizations to the clustering_results directory.
+        """
+        import os
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as mcolors
+        import time
+        from sklearn.decomposition import PCA
+        from sklearn.manifold import TSNE
+        
+        # Create output directory if it doesn't exist
+        os.makedirs("model/clustering_results", exist_ok=True)
+        
+        # Generate timestamp for unique filenames
+        timestamp = int(time.time())
+        
+        # Extract feature data and cluster labels
+        feature_data = self.games_df.select(self.feature_columns).to_numpy()
+        cluster_labels = self.games_df["cluster"].to_numpy()
+        
+        # Skip visualization if there's no clustering data
+        if len(set(cluster_labels)) <= 1 or len(feature_data) == 0:
+            print("Not enough clusters or data for visualization")
+            return
+        
+        # Generate a colormap with distinct colors for each cluster
+        unique_clusters = sorted(set(cluster_labels))
+        num_clusters = len(unique_clusters)
+        
+        # Create a colormap with good separation between colors
+        base_colors = list(mcolors.TABLEAU_COLORS.values())
+        if num_clusters > len(base_colors):
+            # Add more colors if needed
+            import random
+            random.seed(42)  # For reproducibility
+            additional_colors = []
+            while len(base_colors) + len(additional_colors) < num_clusters:
+                new_color = '#%02X%02X%02X' % (random.randint(0, 255), 
+                                             random.randint(0, 255),
+                                             random.randint(0, 255))
+                additional_colors.append(new_color)
+            colors = base_colors + additional_colors
+        else:
+            colors = base_colors[:num_clusters]
+        
+        # Create a mapping from cluster ID to color
+        cluster_to_color = {cluster_id: colors[i % len(colors)] 
+                            for i, cluster_id in enumerate(unique_clusters)}
+        
+        # Create point sizes based on data size for better visibility
+        if len(feature_data) > 1000:
+            point_size = 10
+        elif len(feature_data) > 500:
+            point_size = 20
+        else:
+            point_size = 30
+            
+        # 1. PCA Visualization
+        try:
+            pca = PCA(n_components=2)
+            pca_result = pca.fit_transform(feature_data)
+            
+            plt.figure(figsize=(12, 10))
+            for cluster_id in unique_clusters:
+                # Skip cluster -1 which represents unclustered items
+                if cluster_id == -1:
+                    continue
+                    
+                mask = cluster_labels == cluster_id
+                plt.scatter(
+                    pca_result[mask, 0], 
+                    pca_result[mask, 1],
+                    s=point_size, 
+                    color=cluster_to_color[cluster_id],
+                    label=f'Cluster {cluster_id}'
+                )
+                
+                # Add cluster centroid marker
+                if np.any(mask):
+                    centroid = np.mean(pca_result[mask], axis=0)
+                    plt.scatter(
+                        centroid[0], centroid[1],
+                        s=point_size*4, 
+                        color=cluster_to_color[cluster_id],
+                        edgecolors='black',
+                        linewidth=1.5,
+                        marker='*'
+                    )
+                    
+                    # Add cluster number label
+                    plt.text(
+                        centroid[0], centroid[1],
+                        str(cluster_id),
+                        fontsize=12,
+                        ha='center', va='center',
+                        weight='bold',
+                        color='white',
+                        bbox=dict(facecolor='black', alpha=0.6, boxstyle='round,pad=0.2')
+                    )
+            
+            # Add title and labels
+            explained_var = pca.explained_variance_ratio_
+            plt.title(f'PCA Visualization of Game Clusters\nExplained variance: {explained_var[0]:.2f}, {explained_var[1]:.2f}',
+                     fontsize=14)
+            plt.xlabel(f'Principal Component 1 ({explained_var[0]:.2f}%)', fontsize=12)
+            plt.ylabel(f'Principal Component 2 ({explained_var[1]:.2f}%)', fontsize=12)
+            
+            # Add legend if there aren't too many clusters
+            if num_clusters <= 20:
+                plt.legend(loc='best', bbox_to_anchor=(1, 1))
+            
+            plt.tight_layout()
+            plt.grid(alpha=0.3)
+            plt.savefig(f'model/clustering_results/pca_clusters_{timestamp}.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+        except Exception as e:
+            print(f"Error generating PCA visualization: {e}")
+        
+        # 2. t-SNE Visualization
+        try:
+            # Use fewer perplexity for smaller datasets
+            perplexity = min(30, max(5, len(feature_data) // 10))
+            
+            tsne = TSNE(
+                n_components=2, 
+                perplexity=perplexity,
+                learning_rate='auto',
+                init='random', 
+                random_state=42
+            )
+            
+            tsne_result = tsne.fit_transform(feature_data)
+            
+            plt.figure(figsize=(12, 10))
+            for cluster_id in unique_clusters:
+                # Skip cluster -1 which represents unclustered items
+                if cluster_id == -1:
+                    continue
+                    
+                mask = cluster_labels == cluster_id
+                plt.scatter(
+                    tsne_result[mask, 0], 
+                    tsne_result[mask, 1],
+                    s=point_size, 
+                    color=cluster_to_color[cluster_id],
+                    label=f'Cluster {cluster_id}'
+                )
+                
+                # Add cluster centroid marker
+                if np.any(mask):
+                    centroid = np.mean(tsne_result[mask], axis=0)
+                    plt.scatter(
+                        centroid[0], centroid[1],
+                        s=point_size*4, 
+                        color=cluster_to_color[cluster_id],
+                        edgecolors='black',
+                        linewidth=1.5,
+                        marker='*'
+                    )
+                    
+                    # Add cluster information
+                    if self.cluster_descriptions and cluster_id in self.cluster_descriptions:
+                        # Get number of games in this cluster
+                        count = self.cluster_descriptions[cluster_id]['count']
+                        label = f"{cluster_id}\n({count})"
+                    else:
+                        label = str(cluster_id)
+                    
+                    plt.text(
+                        centroid[0], centroid[1],
+                        label,
+                        fontsize=12,
+                        ha='center', va='center',
+                        weight='bold',
+                        color='white',
+                        bbox=dict(facecolor='black', alpha=0.6, boxstyle='round,pad=0.2')
+                    )
+            
+            # Add title and labels
+            plt.title(f't-SNE Visualization of Game Clusters\nPerplexity: {perplexity}', fontsize=14)
+            plt.xlabel('t-SNE Component 1', fontsize=12)
+            plt.ylabel('t-SNE Component 2', fontsize=12)
+            
+            # Add legend if there aren't too many clusters
+            if num_clusters <= 20:
+                plt.legend(loc='best', bbox_to_anchor=(1, 1))
+            
+            plt.tight_layout()
+            plt.grid(alpha=0.3)
+            plt.savefig(f'model/clustering_results/tsne_clusters_{timestamp}.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            # 3. Combined visualization (PCA + t-SNE side by side)
+            fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+            
+            # PCA plot
+            for cluster_id in unique_clusters:
+                if cluster_id == -1:
+                    continue
+                    
+                mask = cluster_labels == cluster_id
+                axes[0].scatter(
+                    pca_result[mask, 0], 
+                    pca_result[mask, 1],
+                    s=point_size, 
+                    color=cluster_to_color[cluster_id],
+                    label=f'Cluster {cluster_id}'
+                )
+            
+            axes[0].set_title('PCA Projection', fontsize=14)
+            axes[0].set_xlabel(f'PC1 ({explained_var[0]:.2f}%)', fontsize=12)
+            axes[0].set_ylabel(f'PC2 ({explained_var[1]:.2f}%)', fontsize=12)
+            axes[0].grid(alpha=0.3)
+            
+            # t-SNE plot
+            for cluster_id in unique_clusters:
+                if cluster_id == -1:
+                    continue
+                    
+                mask = cluster_labels == cluster_id
+                axes[1].scatter(
+                    tsne_result[mask, 0], 
+                    tsne_result[mask, 1],
+                    s=point_size, 
+                    color=cluster_to_color[cluster_id],
+                    label=f'Cluster {cluster_id}'
+                )
+            
+            axes[1].set_title('t-SNE Projection', fontsize=14)
+            axes[1].set_xlabel('t-SNE 1', fontsize=12)
+            axes[1].set_ylabel('t-SNE 2', fontsize=12)
+            axes[1].grid(alpha=0.3)
+            
+            # Single legend for both plots
+            handles, labels = axes[1].get_legend_handles_labels()
+            fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.05), 
+                       ncol=min(5, len(unique_clusters)))
+            
+            plt.suptitle('Comparison of Dimensionality Reduction Techniques for Cluster Visualization', 
+                         fontsize=16, y=0.98)
+            plt.tight_layout(rect=[0, 0.08, 1, 0.95])  # Adjust for the suptitle
+            plt.savefig(f'model/clustering_results/combined_visualization_{timestamp}.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+        except Exception as e:
+            print(f"Error generating t-SNE visualization: {e}")
