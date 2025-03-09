@@ -356,7 +356,7 @@ class bgClusters:
             # Calculate adaptive optimal range based on data size
             data_size = len(data)
             adaptive_min_k = max(2, int(np.log(data_size)))
-            adaptive_max_k = max(5, int(np.sqrt(data_size)))
+            adaptive_max_k = max(5, int(np.sqrt(data_size)) / 2)
 
             # Set appropriate minimum k based on constraints and adaptive range
             if is_constraint:
@@ -371,6 +371,7 @@ class bgClusters:
             # Adjust max_k based on data dimensions and adaptive range
             feature_count = data.shape[1]
             max_k = min(max_k, feature_count, data_size - 1, adaptive_max_k * 2)  # Allow exploring up to 2x the adaptive max
+            max_k = 30
 
             if max_k < actual_min_k:
                 return max_k
@@ -437,9 +438,9 @@ class bgClusters:
             # Weighted voting - combine all metrics
             # Adjusted weights to account for removed metrics
             weights = {
-                'silhouette': 0.35,    # Good for finding well-separated clusters
-                'db': 0.35,            # Good for identifying distinct clusters
-                'cluster_size': 0.30   # Weight for appropriate cluster count
+                'silhouette': 0.30,    # Good for finding well-separated clusters
+                'db': 0.30,            # Good for identifying distinct clusters
+                'cluster_size': 0.40   # Weight for appropriate cluster count
             }
 
             final_scores = []

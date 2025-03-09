@@ -525,10 +525,10 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
         df = normalize_game_difficulty(df)
         df = one_hot_encode(df, ['game_difficulty_group'], 'GAME_DIFFICULTY')
         df = normalize_player_count(df)
-        df = df.filter(pl.col("categories").list.len() > 0)
+        # df = df.filter(pl.col("categories").list.len() > 0)
         df = one_hot_encode(df, ['categories'], 'GAME_CAT')
         df = group_categories(df)
-        df = df.filter(pl.col("language_dependence_description").is_not_null())
+        # df = df.filter(pl.col("language_dependence_description").is_not_null())
         df = encode_column(df, 'language_dependence_description', LANGUAGE_DEPENDENCY_MAPPING)
         df = one_hot_encode(df, ['language_dependence_description_encoded'], 'LANGUAGE_DEPENDENCY')
 

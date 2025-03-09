@@ -3,7 +3,7 @@ from bgg.bgg import main_bgg
 import data_prep as data_prep
 from model.binning_input_games import bin_board_games
 from model.cluster_games import bgClusters
-from model.recommend_games import BoardGameRecommendation
+from model.recommend_games import RecommendationEngine
 
 constraint_columns = ['GAME_CAT_GROUP_card_game']
 
@@ -49,8 +49,8 @@ if __name__ == "__main__":
     model = bgClusters()
     clusters = model.fit(df, constraint_columns=constraint_columns, name_column="game_name")
 
-    rec = BoardGameRecommendation()
-    game_name = 'Splendor'
+    rec = RecommendationEngine()
+    game_name = 'CATAN'
     recommendations = rec.recommend_games(clusters.clusters, game_name, df)
     
     # Check if there was an error in the recommendations
@@ -66,10 +66,6 @@ if __name__ == "__main__":
             game_scores = recommendations["recommendation_scores"][game]
             explanation = rec.explain_recommendation(game_scores)
             print(f"  Why? {explanation}")
-        print()
-        
-        # Print additional information if desired
-        print(f"These games are from cluster {recommendations['cluster_id']}")
 
 
 
