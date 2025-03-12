@@ -41,8 +41,8 @@ class FeatureProcessor:
     the game dataframes.
     """
     
-    def __init__(self, config: RecommendationConfig):
-        self.config = config
+    def __init__(self):
+        self.config = RecommendationConfig()
     
     def get_feature_columns(self, df: pl.DataFrame) -> List[str]:
         """
@@ -58,6 +58,7 @@ class FeatureProcessor:
         for prefix in self.config.RELEVANT_COLUMNS:
             matching_cols = [col for col in df.columns if col.startswith(prefix)]
             feature_columns.extend(matching_cols)
+
         return feature_columns
     
     def extract_features(self, df: pl.DataFrame, game_name: str) -> np.ndarray:
@@ -78,21 +79,17 @@ class FeatureProcessor:
         
         input_game_row = df.filter(pl.col("game_name") == game_name)
         if input_game_row.height == 0:
-            raise ValueError(f"Game '{game_name}' not found in the dataframe")
+            raise ValueError(f"Game '{game_name}' not found.")
             
         return np.array([input_game_row[0, col] for col in feature_columns])
     
-    def find_game_cluster(
-        self, 
-        clusters: Dict[int, Dict[str, Any]], 
-        game_name: str
-    ) -> Optional[int]:
+    def find_game_cluster(self, clusters: Dict[int, Dict[str, Any]], game_name: str) -> Optional[int]:
         """
         Finds the cluster ID for a given game name.
         
         Args:
             clusters: Dictionary of clusters with format 
-                     {id: {'constraint': str, 'game_names': List[str], 'count': int}}
+                      {id: {'constraint': str, 'game_names': List[str], 'count': int}}
             game_name: Name of the game to find.
             
         Returns:
@@ -101,6 +98,7 @@ class FeatureProcessor:
         for cluster_id, cluster_data in clusters.items():
             if game_name in cluster_data['game_names']:
                 return cluster_id
+            
         return None
     
     def get_candidate_games(self, clusters: Dict[int, Dict[str, Any]], cluster_id: int, game_name: str, df: pl.DataFrame) -> pl.DataFrame:
@@ -108,7 +106,8 @@ class FeatureProcessor:
         Get candidate games from the same cluster as the input game.
         
         Args:
-            clusters: Dictionary of clusters.
+            clusters: Dictionary of clusters with format 
+                      {id: {'constraint': str, 'game_names': List[str], 'count': int}}
             cluster_id: ID of the cluster containing the input game.
             game_name: Name of the input game.
             df: Dataframe containing game data.
@@ -132,23 +131,13 @@ class FeatureProcessor:
             
         return candidates_df
 
-
 class ScoreCalculator:
     """
     Calculates and normalizes different types of scores for game recommendations.
-    
-    This class handles various score calculations including similarity scores,
-    rating quality scores, and final combined scores.
     """
     
-    def __init__(self, config: RecommendationConfig):
-        """
-        Initialize the score calculator.
-        
-        Args:
-            config: Configuration settings for recommendations.
-        """
-        self.config = config
+    def __init__(self):
+        self.config = RecommendationConfig()
     
     def calculate_rating_quality_score(self) -> pl.Expr:
         """
@@ -286,15 +275,9 @@ class RecommendationEngine:
     """
     
     def __init__(self):
-        """
-        Initialize the recommendation engine.
-        
-        Args:
-            config: Configuration settings for recommendations. If None, uses defaults.
-        """
         self.config = RecommendationConfig()
-        self.feature_processor = FeatureProcessor(self.config)
-        self.score_calculator = ScoreCalculator(self.config)
+        self.feature_processor = FeatureProcessor()
+        self.score_calculator = ScoreCalculator()
         self.explanation_generator = ExplanationGenerator()
     
     def recommend_games(self, clusters: Dict[int, Dict[str, Any]], game_name: str, df: pl.DataFrame) -> Dict[str, Any]:
@@ -314,7 +297,7 @@ class RecommendationEngine:
             # Find the cluster containing the input game
             target_cluster_id = self.feature_processor.find_game_cluster(clusters, game_name)
             if target_cluster_id is None:
-                return {"error": f"Game '{game_name}' not found in any cluster"}
+                raise ValueError(f"Game '{game_name}' not found in any cluster")
                 
             # Get feature columns
             feature_columns = self.feature_processor.get_feature_columns(df)
@@ -336,7 +319,6 @@ class RecommendationEngine:
             distances = self.score_calculator.calculate_distance_scores(
                 candidates_df, input_game_features, feature_columns
             )
-            
             candidates_df = candidates_df.with_columns(
                 pl.Series("distance_score", distances)
             )
@@ -357,7 +339,7 @@ class RecommendationEngine:
             
             # If no games meet the threshold, return a message
             if normalized_df.height == 0:
-                return {"error": f"No games similar enough to '{game_name}' were found"}
+                raise ValueError(f"No games similar enough to '{game_name}' were found")
                 
             # Calculate final score
             final_score = self.score_calculator.calculate_final_scores()

@@ -24,35 +24,12 @@ RELEVANT_COLUMNS: List[str] = [
     "GAME_DIFFICULTY"
 ]
 
-# Helper functions
-def get_feature_columns(df: pl.DataFrame) -> List[str]:
-    """
-    Gets all feature columns based on prefixes.
-    
-    Parameters:
-    -----------
-    df : polars.DataFrame
-        DataFrame containing board game data
-        
-    Returns:
-    --------
-    List[str]
-        List of feature column names
-    """
-    feature_columns = []
-    for prefix in RELEVANT_COLUMNS:
-        matching_cols = [col for col in df.columns if col.startswith(prefix)]
-        feature_columns.extend(matching_cols)
-
-    return feature_columns
-
 class bgClusters:
     """
     Class for clustering board games based on feature data with support for constrained clustering.
     """
     
     def __init__(self):
-        """Initialize the clustering model with default settings."""
         self.scaler = StandardScaler()
         self.games_df = None
         self.feature_data = None
@@ -63,6 +40,23 @@ class bgClusters:
         self.clusters = {}
         self.scaled_features = None
 
+    def get_feature_columns(self, df: pl.DataFrame) -> List[str]:
+        """
+        Gets all feature columns based on configured prefixes.
+        
+        Args:
+            df: Dataframe containing game data.
+            
+        Returns:
+            List of column names matching the configured prefixes.
+        """
+        feature_columns = []
+        for prefix in self.config.RELEVANT_COLUMNS:
+            matching_cols = [col for col in df.columns if col.startswith(prefix)]
+            feature_columns.extend(matching_cols)
+
+        return feature_columns
+    
     #############################################
     # MAIN PUBLIC INTERFACE
     #############################################
@@ -124,7 +118,7 @@ class bgClusters:
                     self.generate_cluster_descriptions()
 
                     # Set required attributes for proper functioning
-                    self.feature_columns = get_feature_columns(self.games_df)
+                    self.feature_columns = self.get_feature_columns(games_df)
                     self.name_column = name_column
                     self.constraint_columns = constraint_columns
 
@@ -132,12 +126,12 @@ class bgClusters:
 
         # If no cache exists, proceed with clustering
         self.games_df = games_df.clone()
-        self.unconstrained_df = self.games_df.clone()  # Fixed typo in variable name
+        self.unconstrained_df = self.games_df.clone()
         self.name_column = name_column
         self.constraint_columns = constraint_columns
 
         # Extract feature data
-        self.feature_columns = get_feature_columns(self.games_df)
+        self.feature_columns = self.get_feature_columns(games_df)
         self.feature_data = games_df.select(self.feature_columns).to_numpy()
 
         # Scale the data for future similarity calculations
