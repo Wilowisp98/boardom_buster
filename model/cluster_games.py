@@ -51,7 +51,7 @@ class bgClusters:
             List of column names matching the configured prefixes.
         """
         feature_columns = []
-        for prefix in self.config.RELEVANT_COLUMNS:
+        for prefix in RELEVANT_COLUMNS:
             matching_cols = [col for col in df.columns if col.startswith(prefix)]
             feature_columns.extend(matching_cols)
 
@@ -61,7 +61,7 @@ class bgClusters:
     # MAIN PUBLIC INTERFACE
     #############################################
     
-    def fit(self, games_df, constraint_columns, name_column=None, cache_dir='model/clustering_results/cluster', cache_filename='latest_clusters.pkl'):
+    def fit(self, games_df, constraint_columns, name_column=None, cache_dir='model/clustering_results/cluster', cache_filename='clusters.pkl'):
         """
         Fit the model with constrained clustering.
 
@@ -96,7 +96,7 @@ class bgClusters:
             with open(cache_file, 'rb') as f:
                 cached_data = pickle.load(f)
 
-                # Reconstruct clusters from simplified cache
+                # Reconstruct clusters
                 self.clusters = {}
 
                 if 'cluster_to_games' in cached_data:
@@ -111,48 +111,43 @@ class bgClusters:
                         }
 
                     # Store the games_df
-                    self.games_df = games_df.clone()
+                    self.games_df = games_df
 
                     # Infer the rest based on the games_df
                     self._add_cluster_labels()
-                    self.generate_cluster_descriptions()
+                    self._generate_cluster_descriptions()
 
                     # Set required attributes for proper functioning
-                    self.feature_columns = self.get_feature_columns(games_df)
+                    self.feature_columns = self.get_feature_columns(self.games_df)
                     self.name_column = name_column
                     self.constraint_columns = constraint_columns
 
                     return self
 
         # If no cache exists, proceed with clustering
-        self.games_df = games_df.clone()
-        self.unconstrained_df = self.games_df.clone()
+        self.games_df = games_df
+        self.unconstrained_df = games_df
         self.name_column = name_column
         self.constraint_columns = constraint_columns
 
         # Extract feature data
-        self.feature_columns = self.get_feature_columns(games_df)
-        self.feature_data = games_df.select(self.feature_columns).to_numpy()
-
-        # Scale the data for future similarity calculations
-        self.scaler.fit(self.feature_data)
-        self.scaled_features = self.scaler.transform(self.feature_data)
+        self.feature_columns = self.get_feature_columns(self.games_df)
+        self.feature_data = self.games_df.select(self.feature_columns).to_numpy()
 
         # Handle constrained and unconstrained clustering
-        unconstrained_df = self.games_df.clone()
         for column in self.constraint_columns:
             constrained_df = self.games_df.filter(pl.col(column) == 1)
-            unconstrained_df = unconstrained_df.filter(pl.col(column) != 1)
-            self._create_constrained_clusters(constrained_df, is_constraint=True, constraint_name=column.split('GAME_CAT_GROUP_')[1])
+            self.unconstrained_df = self.unconstrained_df.filter(pl.col(column) != 1)
+            self._create_constrained_clusters(constrained_df, constraint_name=column.split('GAME_CAT_GROUP_')[1])
 
         # Create clusters for unconstrained data
-        self._create_constrained_clusters(unconstrained_df)
+        self._create_constrained_clusters(self.unconstrained_df)
 
         # Add cluster labels to the DataFrame
         self._add_cluster_labels()
 
         # Generate cluster descriptions
-        self.generate_cluster_descriptions()
+        self._generate_cluster_descriptions()
 
         # Generate visualizations of clustering results
         self._visualize_clustering_results()
@@ -162,7 +157,7 @@ class bgClusters:
 
         return self
     
-    def generate_cluster_descriptions(self):
+    def _generate_cluster_descriptions(self):
         """
         Generate descriptions for each cluster based on feature importance.
         
@@ -245,7 +240,7 @@ class bgClusters:
     # CLUSTERING IMPLEMENTATION
     #############################################
     
-    def _create_constrained_clusters(self, data_to_cluster, is_constraint=False, constraint_name=None):
+    def _create_constrained_clusters(self, data_to_cluster, constraint_name=None):
         """
         Create clusters based on constraint columns, with optional subclustering within constraints.
         
@@ -270,8 +265,8 @@ class bgClusters:
 
         # Find optimal number of clusters
         optimal_k = self._find_optimal_k(
-            data=feature_data, 
-            is_constraint=is_constraint
+            data=feature_data,
+            constraint_name=constraint_name
         )
 
         # Apply K-means to create subclusters
@@ -313,29 +308,25 @@ class bgClusters:
                 }
                 cluster_id += 1
 
-    def _find_optimal_k(self, data, max_k=20, min_k=2, is_constraint=False):
+    def _find_optimal_k(self, data, constraint_name: str = ''):
         """
         Find the optimal number of clusters using multiple evaluation metrics with adaptive size constraints.
-        
+        Includes a complexity penalty to prevent selecting too many clusters.
+
         Parameters:
         -----------
         data : numpy.ndarray
             Feature data to cluster
-        max_k : int, optional
-            Maximum number of clusters to consider
-        min_k : int, optional
-            Minimum number of clusters to consider
-        is_constraint : bool, optional
-            Whether this clustering is based on a constraint
-            
+        constraint_name : str, optional
+            Name of the constraint for saving results
+
         Returns:
         --------
         int
             Optimal number of clusters
         """
-        from sklearn.metrics import silhouette_score, davies_bouldin_score
+        from sklearn.metrics import silhouette_score
         import numpy as np
-        from collections import Counter
         import matplotlib.pyplot as plt
         import os
         import io
@@ -352,29 +343,14 @@ class bgClusters:
             adaptive_min_k = max(2, int(np.log(data_size)))
             adaptive_max_k = max(5, int(np.sqrt(data_size)) / 2)
 
-            # Set appropriate minimum k based on constraints and adaptive range
-            if is_constraint:
-                actual_min_k = max(min_k, adaptive_min_k - 1)  # Slightly more flexible for constraints
-            else:
-                actual_min_k = max(min_k, adaptive_min_k)
-
-            # Handle edge cases with limited data
-            if data_size < actual_min_k + 1:
-                return max(2, data_size - 1) if is_constraint else max(1, data_size - 1)
-
             # Adjust max_k based on data dimensions and adaptive range
             feature_count = data.shape[1]
-            max_k = min(max_k, feature_count, data_size - 1, adaptive_max_k * 2)  # Allow exploring up to 2x the adaptive max
-            max_k = 30
-
-            if max_k < actual_min_k:
-                return max_k
+            max_k = min(feature_count, data_size - 1, adaptive_max_k * 2)
 
             # Initialize storage for metrics
-            k_range = range(actual_min_k, max_k + 1)
+            k_range = range(2, int(max_k * 2))
             silhouette_scores = []
-            db_scores = []          # Davies-Bouldin Index
-            cluster_size_scores = []  # New metric for cluster count appropriateness
+            cluster_size_scores = []
 
             # Evaluate each k using multiple metrics
             for k in k_range:
@@ -388,21 +364,14 @@ class bgClusters:
                 else:
                     silhouette_scores.append(0)
 
-                # Calculate Davies-Bouldin Index (lower is better)
-                if k > 1:
-                    db_score = davies_bouldin_score(data, labels)
-                    db_scores.append(db_score)
-                else:
-                    db_scores.append(float('inf'))
-
                 # Calculate cluster size appropriateness score
-                if adaptive_min_k <= k <= adaptive_max_k:
+                if adaptive_min_k <= k <= max_k:
                     # Full score within the optimal range
                     cluster_size_scores.append(1.0)
                 else:
                     # Gradually decreasing score outside optimal range
-                    distance = min(abs(k - adaptive_min_k), abs(k - adaptive_max_k))
-                    max_reasonable = int(np.sqrt(data_size) / 2)  # Upper limit for reasonable clusters
+                    distance = min(abs(k - adaptive_min_k), abs(k - max_k))
+                    max_reasonable = int(np.sqrt(data_size) / 2)
                     score = max(0, 1.0 - (distance / max(1, max_reasonable)))
                     cluster_size_scores.append(score)
 
@@ -416,7 +385,6 @@ class bgClusters:
                     return [0.5] * len(scores)
 
                 # For metrics where higher is better, normalize to [0,1]
-                # For metrics where lower is better, invert the normalized score
                 normalized = [(s - min_val) / (max_val - min_val) for s in scores]
 
                 if not higher_is_better:
@@ -426,42 +394,42 @@ class bgClusters:
 
             # Apply normalized scores
             norm_silhouette = normalize(silhouette_scores, higher_is_better=True)  # Higher is better
-            norm_db = normalize(db_scores, higher_is_better=False)                 # Lower is better, so invert
             norm_cluster_size = cluster_size_scores  # Already normalized
 
+            # Calculate complexity penalty - increases with k
+            complexity_penalty = []
+            penalty_weight = 0.2
+            max_k_value = max(k_range)
+
+            for k in k_range:
+                # Quadratic penalty increases more rapidly as k increases
+                penalty = penalty_weight * (k / max_k_value)**2
+                complexity_penalty.append(penalty)
+
             # Weighted voting - combine all metrics
-            # Adjusted weights to account for removed metrics
             weights = {
-                'silhouette': 0.30,    # Good for finding well-separated clusters
-                'db': 0.30,            # Good for identifying distinct clusters
-                'cluster_size': 0.40   # Weight for appropriate cluster count
+                'silhouette': 0.65,
+                'cluster_size': 0.35 
             }
 
             final_scores = []
+            final_scores_with_penalty = []
+
             for i in range(len(k_range)):
+                # Original score without penalty
                 score = (
                     weights['silhouette'] * norm_silhouette[i] +
-                    weights['db'] * norm_db[i] +
                     weights['cluster_size'] * norm_cluster_size[i]
                 )
                 final_scores.append(score)
 
-            # Find the optimal k directly from final_scores without smoothing
-            best_idx = np.argmax(final_scores)
+                # Score with complexity penalty applied
+                penalized_score = score - complexity_penalty[i]
+                final_scores_with_penalty.append(penalized_score)
+
+            # Find the optimal k from final_scores_with_penalty
+            best_idx = np.argmax(final_scores_with_penalty)
             optimal_k = k_range[best_idx]
-
-            # Create iteration history to show the progression of values
-            history = {
-                'k': list(k_range),
-                'silhouette': norm_silhouette,
-                'db': norm_db,
-                'cluster_size': norm_cluster_size,
-                'final': final_scores
-            }
-
-            # Generate a timestamp for unique filenames
-            import time
-            timestamp = int(time.time())
 
             # VISUALIZATION 0: Optimization process
             fig, axes = plt.subplots(2, 1, figsize=(12, 10), gridspec_kw={'height_ratios': [1, 1]})
@@ -469,16 +437,19 @@ class bgClusters:
             # Top plot: Detailed progression of each k evaluation
             ax = axes[0]
             x = np.arange(len(k_range))
-            width = 0.2
-            offsets = [-1, 0, 1]
+            width = 0.3
+            offsets = [-0.5, 0.5]
 
             # Plot bars for each metric side by side
             ax.bar(x + offsets[0]*width, norm_silhouette, width, label='Silhouette', color='blue', alpha=0.7)
-            ax.bar(x + offsets[1]*width, norm_db, width, label='Davies-Bouldin', color='red', alpha=0.7)
-            ax.bar(x + offsets[2]*width, norm_cluster_size, width, label='Cluster Size', color='orange', alpha=0.7)
+            ax.bar(x + offsets[1]*width, norm_cluster_size, width, label='Cluster Size', color='orange', alpha=0.7)
 
-            # Add line showing weighted total
-            ax.plot(x, final_scores, 'ko-', linewidth=2, label='Weighted Total')
+            # Add line showing weighted total with and without penalty
+            ax.plot(x, final_scores, 'ko-', linewidth=2, label='Original Score')
+            ax.plot(x, final_scores_with_penalty, 'ro-', linewidth=2, label='Score with Penalty')
+
+            # Add complexity penalty visualization
+            ax.plot(x, complexity_penalty, 'g--', linewidth=1.5, label='Complexity Penalty')
 
             # Highlight the best k
             best_k_idx = list(k_range).index(optimal_k)
@@ -498,9 +469,10 @@ class bgClusters:
             ax = axes[1]
             metrics = [
                 ('Silhouette', norm_silhouette, 'blue', 'o-'), 
-                ('Davies-Bouldin', norm_db, 'red', 'v-'),
                 ('Cluster Size', norm_cluster_size, 'orange', 'p-'),
-                ('Weighted Total', final_scores, 'black', '*-')
+                ('Original Score', final_scores, 'black', '*-'),
+                ('Score with Penalty', final_scores_with_penalty, 'red', 'x-'),
+                ('Complexity Penalty', complexity_penalty, 'green', '--')
             ]
 
             for name, values, color, style in metrics:
@@ -515,14 +487,14 @@ class bgClusters:
 
             plt.tight_layout()
             # Save to file
-            fig.savefig(f'model/clustering_results/optimization_process_{timestamp}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'model/clustering_results/optimization_process_{constraint_name}.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
             # VISUALIZATION 1: Individual metrics (original)
             fig = plt.figure(figsize=(12, 6))
             plt.plot(k_range, norm_silhouette, 'o-', label='Silhouette Score (normalized)', color='blue')
-            plt.plot(k_range, norm_db, 'v-', label='Davies-Bouldin Score (normalized)', color='red')
             plt.plot(k_range, norm_cluster_size, 'p-', label='Cluster Size Score', color='orange')
+            plt.plot(k_range, complexity_penalty, '--', label='Complexity Penalty', color='green')
             plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
             plt.xlabel('Number of Clusters (k)')
             plt.ylabel('Normalized Score')
@@ -531,23 +503,24 @@ class bgClusters:
             plt.legend()
             plt.tight_layout()
             # Save to file
-            fig.savefig(f'model/clustering_results/individual_metrics_{timestamp}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'model/clustering_results/individual_metrics_{constraint_name}.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
             # VISUALIZATION 2: Combined scores with iteration markers
             fig = plt.figure(figsize=(10, 5))
-            plt.plot(k_range, final_scores, 'o-', color='blue', label='Combined Score')
+            plt.plot(k_range, final_scores, 'o-', color='blue', label='Original Score')
+            plt.plot(k_range, final_scores_with_penalty, 'o-', color='red', label='Score with Penalty')
 
             # Add arrows showing the progression of testing
             for i in range(len(k_range)-1):
                 plt.annotate('', 
-                    xy=(k_range[i+1], final_scores[i+1]),
-                    xytext=(k_range[i], final_scores[i]),
+                    xy=(k_range[i+1], final_scores_with_penalty[i+1]),
+                    xytext=(k_range[i], final_scores_with_penalty[i]),
                     arrowprops=dict(arrowstyle='->', color='gray', alpha=0.6, lw=1.5))
 
             # Add iteration numbers
             for i in range(len(k_range)):
-                plt.text(k_range[i], final_scores[i] + 0.02, f"{i+1}", 
+                plt.text(k_range[i], final_scores_with_penalty[i] + 0.02, f"{i+1}", 
                         ha='center', va='bottom', fontsize=9, color='darkblue')
 
             plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
@@ -558,22 +531,25 @@ class bgClusters:
             plt.legend()
             plt.tight_layout()
             # Save to file
-            fig.savefig(f'model/clustering_results/combined_scores_{timestamp}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'model/clustering_results/combined_scores_{constraint_name}.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
             # Print iterations summary
             print("\nClustering Optimization Iterations:")
-            print("-" * 50)
-            print(f"{'k':>3} {'Silhouette':>12} {'DB':>12} {'Size':>12} {'Total':>12}")
-            print("-" * 50)
+            print("-" * 60)
+            print(f"{'k':>3} {'Silhouette':>12} {'Size':>12} {'Penalty':>12} {'Original':>12} {'Penalized':>12}")
+            print("-" * 60)
             for i, k in enumerate(k_range):
-                print(f"{k:3d} {norm_silhouette[i]:12.4f} {norm_db[i]:12.4f} "
-                      f"{norm_cluster_size[i]:12.4f} {final_scores[i]:12.4f}")
-            print("-" * 50)
+                print(f"{k:3d} {norm_silhouette[i]:12.4f} "
+                      f"{norm_cluster_size[i]:12.4f} "
+                      f"{complexity_penalty[i]:12.4f} "
+                      f"{final_scores[i]:12.4f} "
+                      f"{final_scores_with_penalty[i]:12.4f}")
+            print("-" * 60)
             print(f"Selected optimal k = {optimal_k} (data size: {data_size})\n")
 
         # Write the captured output to a file
-        with open(f'model/clustering_results/clustering_log_{timestamp}.txt', 'w') as f:
+        with open(f'model/clustering_results/clustering_log_{constraint_name}.txt', 'w') as f:
             f.write(captured_output.getvalue())
 
         return optimal_k

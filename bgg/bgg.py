@@ -32,15 +32,9 @@ class BGG:
     Attributes:
         config (BGGConfig): Configuration settings for the BGG client.
     """
-    def __init__(self, config: BGGConfig) -> None:
-        """
-        Initializes the BGG class with configuration settings.
-
-        Args:
-            config (BGGConfig): Configuration settings for the BGG client.
-        """
-        self.logger = get_logger('BGGLogger', base_dir=config.base_dir)
-        self.config = config
+    def __init__(self) -> None:
+        self.config = BGGConfig
+        self.logger = get_logger('BGGLogger', base_dir=self.config.base_dir)
         self.control_data = self._load_control_data()
         self.global_df = None
         self.current_date = int(datetime.now().strftime('%Y%m%d'))
@@ -263,7 +257,7 @@ class BGG:
                 best_votes = 0
                 recommended_votes = 0
                 for result in poll['results']:
-                    if isinstance(result, dict):  # Ensure result is a dictionary
+                    if isinstance(result, dict):
                         for player_result in result.get('result', []):
                             if player_result['@value'] == 'Best' and int(player_result['@numvotes']) > best_votes:
                                 best_numplayers = result['@numplayers']
@@ -276,7 +270,7 @@ class BGG:
             elif poll['@name'] == 'suggested_playerage':
                 max_votes = 0
                 for result in poll['results'].get('result', []):
-                    if isinstance(result, dict):  # Ensure result is a dictionary
+                    if isinstance(result, dict):
                         votes = int(result['@numvotes'])
                         if votes > max_votes:
                             if result['@value'] == '21 and up':
@@ -288,7 +282,7 @@ class BGG:
             elif poll['@name'] == 'language_dependence':
                 max_votes = 0
                 for result in poll['results'].get('result', []):
-                    if isinstance(result, dict):  # Ensure result is a dictionary
+                    if isinstance(result, dict):
                         votes = int(result['@numvotes'])
                         if votes > max_votes:
                             language_dependence = result['@value']
