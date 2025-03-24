@@ -283,13 +283,13 @@ class RecommendationEngine:
     def recommend_games(self, clusters: Dict[int, Dict[str, Any]], game_name: str, df: pl.DataFrame) -> Dict[str, Any]:
         """
         Recommends games similar to the specified game.
-        
+
         Args:
             clusters: Dictionary of clusters with format 
                      {id: {'constraint': str, 'game_names': List[str], 'count': int}}
             game_name: Name of the game to base recommendations on.
             df: DataFrame containing game data.
-            
+
         Returns:
             Dictionary with recommended games and their scores.
         """
@@ -298,23 +298,29 @@ class RecommendationEngine:
             target_cluster_id = self.feature_processor.find_game_cluster(clusters, game_name)
             if target_cluster_id is None:
                 raise ValueError(f"Game '{game_name}' not found in any cluster")
-                
+
             # Get feature columns
             feature_columns = self.feature_processor.get_feature_columns(df)
-            
+
             # Extract features for the input game
             input_game_features = self.feature_processor.extract_features(df, game_name)
-            
+
             # Get candidate games from the same cluster
             candidates_df = self.feature_processor.get_candidate_games(
                 clusters, target_cluster_id, game_name, df
             )
-            
+
+            # Filter out games that are variations/expansions of the input game
+            base_game_name = game_name.lower().strip()
+            candidates_df = candidates_df.filter(
+                ~pl.col("game_name").str.to_lowercase().str.starts_with(base_game_name + ":") 
+            )
+
             # Calculate all scores
             candidates_df = candidates_df.with_columns([
                 self.score_calculator.calculate_rating_quality_score()
             ])
-            
+
             # Calculate distances
             distances = self.score_calculator.calculate_distance_scores(
                 candidates_df, input_game_features, feature_columns
@@ -322,28 +328,28 @@ class RecommendationEngine:
             candidates_df = candidates_df.with_columns(
                 pl.Series("distance_score", distances)
             )
-            
+
             # Normalize all scores
             score_columns = [
                 "popularity_score",
                 "rating_quality_score",
                 "distance_score"
             ]
-            
+
             normalized_df = self.score_calculator.normalize_scores(candidates_df, score_columns)
-            
+
             # Filter out games below minimum similarity threshold
             normalized_df = normalized_df.filter(
                 pl.col("distance_score_normalized") >= self.config.MIN_SIMILARITY_THRESHOLD
             )
-            
+
             # If no games meet the threshold, return a message
             if normalized_df.height == 0:
                 raise ValueError(f"No games similar enough to '{game_name}' were found")
-                
+
             # Calculate final score
             final_score = self.score_calculator.calculate_final_scores()
-            
+
             # Get top 5 recommendations
             top_5_df = (
                 normalized_df
@@ -351,7 +357,7 @@ class RecommendationEngine:
                 .sort("final_score", descending=True)
                 .head(5)
             )
-            
+
             # Format recommendations
             result = {
                 "input_game": game_name,
@@ -367,9 +373,9 @@ class RecommendationEngine:
                     for row in top_5_df.iter_rows(named=True)
                 }
             }
-            
+
             return result
-            
+
         except ValueError as e:
             return {"error": str(e)}
     
