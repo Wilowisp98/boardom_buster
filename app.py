@@ -5,10 +5,7 @@ import data_prep as data_prep
 from model.binning_input_games import bin_board_games
 from model.cluster_games import bgClusters
 from model.recommend_games import RecommendationEngine
-import json
 import os
-import datetime
-import pandas as pd
 
 app = Flask(__name__)
 
@@ -33,9 +30,12 @@ if not os.path.exists(FEEDBACK_DIR):
 
 # Create feedback file with headers if it doesn't exist
 if not os.path.exists(FEEDBACK_FILE):
-    pd.DataFrame(columns=[
-        'timestamp', 'input_game', 'recommended_game', 'feedback'
-    ]).to_csv(FEEDBACK_FILE, index=False)
+    pl.DataFrame({
+        'timestamp': [],
+        'input_game': [],
+        'recommended_game': [],
+        'feedback': []
+    }).write_csv(FEEDBACK_FILE)
 
 @app.route('/')
 def index():
@@ -76,15 +76,17 @@ def save_feedback():
         feedback_data = request.json
         
         # Create a DataFrame with the feedback
-        feedback_df = pd.DataFrame([{
-            'timestamp': feedback_data['timestamp'],
-            'input_game': feedback_data['input_game'],
-            'recommended_game': feedback_data['recommended_game'],
-            'feedback': feedback_data['feedback']
-        }])
+        feedback_df = pl.DataFrame({
+            'timestamp': [feedback_data['timestamp']],
+            'input_game': [feedback_data['input_game']],
+            'recommended_game': [feedback_data['recommended_game']],
+            'feedback': [feedback_data['feedback']]
+        })
         
-        # Append to the CSV file
-        feedback_df.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False)
+        # Read existing data, append new data, and write back
+        existing_df = pl.read_csv(FEEDBACK_FILE)
+        combined_df = pl.concat([existing_df, feedback_df])
+        combined_df.write_csv(FEEDBACK_FILE)
         
         return jsonify({"status": "success", "message": "Feedback saved successfully"})
     except Exception as e:
