@@ -1,7 +1,6 @@
 **/__pycache__/
 **/log/
 **/err/
-**/data/
 **/bgg_control.json
 **/all.ipynb
 **/clustering_results/

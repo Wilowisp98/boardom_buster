@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             // Keep loading spinner visible for at least 2 seconds
-            const minLoadingTime = 3000; // 2 seconds
+            const minLoadingTime = 3000; // 3 seconds
             const startTime = new Date().getTime();
             const elapsedTime = new Date().getTime() - startTime;
             const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
@@ -106,10 +106,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         item.appendChild(feedbackElement);
                         results.appendChild(item);
                     });
-                    
-                    // Add a sound effect for fun (optional)
-                    // const audio = new Audio('/static/dice-roll.mp3');
-                    // audio.play();
                 }
                 
                 // Show results section with a slight delay for animation effect
@@ -149,33 +145,130 @@ document.addEventListener('DOMContentLoaded', function() {
         const gameTitle = button.getAttribute('data-game');
         const feedbackType = button.getAttribute('data-type');
         const inputGame = document.getElementById('game-name').value;
-        
-        // Disable both buttons in the parent container
         const parentSection = button.closest('.feedback-section');
-        const allButtons = parentSection.querySelectorAll('.feedback-btn');
-        allButtons.forEach(btn => {
-            btn.disabled = true;
-            btn.classList.add('disabled');
-        });
         
-        // Show feedback received message
-        const thankYouMsg = document.createElement('p');
-        thankYouMsg.className = 'feedback-thanks';
-        thankYouMsg.textContent = 'Thanks for your feedback!';
-        parentSection.appendChild(thankYouMsg);
+        if (feedbackType === 'like') {
+            // Disable both buttons in the parent container
+            const allButtons = parentSection.querySelectorAll('.feedback-btn');
+            allButtons.forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('disabled');
+            });
+            
+            // Show feedback received message
+            const thankYouMsg = document.createElement('p');
+            thankYouMsg.className = 'feedback-thanks';
+            thankYouMsg.textContent = 'Thanks for your feedback!';
+            parentSection.appendChild(thankYouMsg);
+            
+            // Send feedback to server
+            sendFeedbackToServer(inputGame, gameTitle, feedbackType);
+        } else if (feedbackType === 'dislike') {
+            // Remove the buttons
+            parentSection.querySelector('.feedback-buttons').remove();
+            parentSection.querySelector('.feedback-label').textContent = 'Why wasn\'t this recommendation helpful?';
+            
+            // Create detailed feedback form
+            const detailedFeedback = document.createElement('div');
+            detailedFeedback.className = 'detailed-feedback';
+            
+            // Add reason options
+            const reasonsDiv = document.createElement('div');
+            reasonsDiv.className = 'feedback-reasons';
+            
+            const reasons = [
+                'Too similar to games I already know',
+                'Too different from what I enjoy',
+                'Not my preferred theme/genre',
+                'Too complex/simple for my taste',
+                'Other reason'
+            ];
+            
+            reasons.forEach(reason => {
+                const option = document.createElement('div');
+                option.className = 'feedback-reason-option';
+                
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = `reason-${gameTitle.replace(/\s+/g, '-')}`;
+                radio.id = `reason-${reason.replace(/\s+/g, '-')}-${gameTitle.replace(/\s+/g, '-')}`;
+                radio.value = reason;
+                
+                const label = document.createElement('label');
+                label.htmlFor = radio.id;
+                label.textContent = reason;
+                
+                option.appendChild(radio);
+                option.appendChild(label);
+                reasonsDiv.appendChild(option);
+            });
+            
+            // Add comment area
+            const commentDiv = document.createElement('div');
+            commentDiv.className = 'feedback-comment';
+            
+            const commentLabel = document.createElement('label');
+            commentLabel.htmlFor = `comment-${gameTitle.replace(/\s+/g, '-')}`;
+            commentLabel.textContent = 'Additional comments (optional):';
+            
+            const commentInput = document.createElement('textarea');
+            commentInput.id = `comment-${gameTitle.replace(/\s+/g, '-')}`;
+            commentInput.placeholder = 'Tell us more about your thoughts...';
+            
+            commentDiv.appendChild(commentLabel);
+            commentDiv.appendChild(commentInput);
+            
+            // Add submit button
+            const submitBtn = document.createElement('button');
+            submitBtn.className = 'feedback-submit';
+            submitBtn.textContent = 'Submit Feedback';
+            submitBtn.addEventListener('click', function() {
+                // Get selected reason
+                const selectedReason = reasonsDiv.querySelector('input[type="radio"]:checked');
+                let reason = selectedReason ? selectedReason.value : 'No reason provided';
+                
+                // Get comment
+                const comment = commentInput.value.trim();
+                
+                // Send feedback to server
+                sendFeedbackToServer(inputGame, gameTitle, 'dislike', reason, comment);
+                
+                // Remove the form and show thank you message
+                detailedFeedback.innerHTML = '';
+                const thankYouMsg = document.createElement('p');
+                thankYouMsg.className = 'feedback-thanks';
+                thankYouMsg.textContent = 'Thanks for your detailed feedback!';
+                detailedFeedback.appendChild(thankYouMsg);
+            });
+            
+            // Assemble the detailed feedback form
+            detailedFeedback.appendChild(reasonsDiv);
+            detailedFeedback.appendChild(commentDiv);
+            detailedFeedback.appendChild(submitBtn);
+            
+            // Add to parent section
+            parentSection.appendChild(detailedFeedback);
+        }
+    }
+    
+    // Function to send feedback to server
+    function sendFeedbackToServer(inputGame, gameTitle, feedbackType, reason = null, comment = null) {
+        const feedbackData = {
+            input_game: inputGame,
+            recommended_game: gameTitle,
+            feedback: feedbackType,
+            timestamp: new Date().toISOString()
+        };
         
-        // Send feedback to server
+        if (reason) feedbackData.reason = reason;
+        if (comment) feedbackData.comment = comment;
+        
         fetch('/save_feedback', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                input_game: inputGame,
-                recommended_game: gameTitle,
-                feedback: feedbackType,
-                timestamp: new Date().toISOString()
-            })
+            body: JSON.stringify(feedbackData)
         })
         .then(response => response.json())
         .then(data => {

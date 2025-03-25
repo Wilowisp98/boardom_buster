@@ -34,7 +34,9 @@ if not os.path.exists(FEEDBACK_FILE):
         'timestamp': [],
         'input_game': [],
         'recommended_game': [],
-        'feedback': []
+        'feedback': [],
+        'reason': [],
+        'comment': []
     }).write_csv(FEEDBACK_FILE)
 
 @app.route('/')
@@ -75,22 +77,48 @@ def save_feedback():
     try:
         feedback_data = request.json
         
-        # Create a DataFrame with the feedback
-        feedback_df = pl.DataFrame({
+        # Create base feedback entry with required fields
+        feedback_entry = {
             'timestamp': [feedback_data['timestamp']],
             'input_game': [feedback_data['input_game']],
             'recommended_game': [feedback_data['recommended_game']],
-            'feedback': [feedback_data['feedback']]
-        })
+            'feedback': [feedback_data['feedback']],
+            'reason': [feedback_data.get('reason', None)],
+            'comment': [feedback_data.get('comment', None)]
+        }
         
-        # Read existing data, append new data, and write back
-        existing_df = pl.read_csv(FEEDBACK_FILE)
-        combined_df = pl.concat([existing_df, feedback_df])
+        # Create DataFrame from the new feedback
+        new_feedback_df = pl.DataFrame(feedback_entry)
+        
+        try:
+            # Try to read existing feedback
+            existing_df = pl.read_csv(FEEDBACK_FILE)
+            # Ensure all columns exist in existing DataFrame
+            for col in new_feedback_df.columns:
+                if col not in existing_df.columns:
+                    existing_df = existing_df.with_columns(pl.lit(None).alias(col))
+            
+            # Combine existing and new feedback
+            combined_df = pl.concat([existing_df, new_feedback_df], how="vertical")
+            
+        except Exception as e:
+            print(f"Creating new feedback file: {str(e)}")
+            combined_df = new_feedback_df
+        
+        # Write the combined DataFrame back to CSV
         combined_df.write_csv(FEEDBACK_FILE)
         
-        return jsonify({"status": "success", "message": "Feedback saved successfully"})
+        return jsonify({
+            "status": "success", 
+            "message": "Feedback saved successfully"
+        })
+        
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        print(f"Error saving feedback: {str(e)}")
+        return jsonify({
+            "status": "error", 
+            "message": f"Error saving feedback: {str(e)}"
+        }), 500
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)

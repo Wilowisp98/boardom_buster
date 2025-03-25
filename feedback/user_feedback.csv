@@ -1,5 +1,3 @@
-timestamp,input_game,recommended_game,feedback
-2025-03-24T19:54:38.791Z,Tal der Könige,Medici,like
-2025-03-24T19:54:58.124Z,Tal der Könige,Colorado County,like
-2025-03-24T20:04:24.212Z,Die Macher,Europa Universalis,dislike
-2025-03-24T20:04:27.003Z,Die Macher,Rise and Decline of the Third Reich,dislike
+timestamp,input_game,recommended_game,feedback,reason,comment
+2025-03-25T21:34:52.032Z,Acquire,Big Boss,dislike,Too complex/simple for my taste,batata
+2025-03-25T21:35:59.340Z,CATAN,Crude: The Oil Game,dislike,Not my preferred theme/genre,batata

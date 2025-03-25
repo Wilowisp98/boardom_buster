@@ -591,3 +591,71 @@ button:hover {
     width: 35px;
     height: 35px;
 }
+
+/* Detailed feedback styles */
+.detailed-feedback {
+    margin-top: 15px;
+    animation: fadeIn 0.3s;
+}
+
+.feedback-reasons {
+    margin-bottom: 15px;
+}
+
+.feedback-reason-option {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.feedback-reason-option input[type="radio"] {
+    margin-right: 8px;
+}
+
+.feedback-reason-option label {
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+.feedback-comment {
+    margin-bottom: 15px;
+}
+
+.feedback-comment label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.95rem;
+    color: #666;
+}
+
+.feedback-comment textarea {
+    width: 100%;
+    height: 80px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 0.95rem;
+}
+
+.feedback-comment textarea:focus {
+    border-color: var(--accent-color);
+    outline: none;
+    box-shadow: 0 0 4px rgba(90, 57, 33, 0.3);
+}
+
+.feedback-submit {
+    padding: 8px 15px;
+    font-size: 0.95rem;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.feedback-submit:hover {
+    background-color: var(--highlight-color);
+}
