@@ -227,7 +227,7 @@ class ScoreCalculator:
         """
         return (
             (pl.col("popularity_score_normalized") * pl.lit(self.config.POPULARITY_WEIGHT)) +
-            (pl.col("distance_score_normalized") * pl.lit(self.config.DISTANCE_WEIGHT)) +
+            (pl.col("distance_score") * pl.lit(self.config.DISTANCE_WEIGHT)) +
             (pl.col("rating_quality_score_normalized") * pl.lit(self.config.RATING_QUALITY_WEIGHT))
         ).alias("final_score")
 
@@ -336,11 +336,17 @@ class RecommendationEngine:
                 "distance_score"
             ]
 
+            # score_columns = [
+            #     "popularity_score",
+            #     "rating_quality_score",
+            #     "distance_score"
+            # ]
+
             normalized_df = self.score_calculator.normalize_scores(candidates_df, score_columns)
 
             # Filter out games below minimum similarity threshold
             normalized_df = normalized_df.filter(
-                pl.col("distance_score_normalized") >= self.config.MIN_SIMILARITY_THRESHOLD
+                pl.col("distance_score") >= self.config.MIN_SIMILARITY_THRESHOLD
             )
 
             # If no games meet the threshold, return a message
@@ -367,7 +373,7 @@ class RecommendationEngine:
                     row["game_name"]: {
                         "final_score": row["final_score"],
                         "popularity": row["popularity_score_normalized"],
-                        "similarity": row["distance_score_normalized"],
+                        "similarity": row["distance_score"],
                         "rating_quality": row["rating_quality_score_normalized"]
                     }
                     for row in top_5_df.iter_rows(named=True)

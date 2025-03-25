@@ -1,1 +1,3 @@
 add feedback
+    - like/dislike
+    - if dislike, have some options to choose why the dislike and add the possibility to add a comment
