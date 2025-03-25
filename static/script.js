@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             // Keep loading spinner visible for at least 2 seconds
-            const minLoadingTime = 2000; // 2 seconds
+            const minLoadingTime = 3000; // 2 seconds
             const startTime = new Date().getTime();
             const elapsedTime = new Date().getTime() - startTime;
             const remainingTime = Math.max(0, minLoadingTime - elapsedTime);

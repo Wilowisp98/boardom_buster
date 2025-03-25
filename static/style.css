@@ -227,8 +227,8 @@ button:hover {
 }
 
 .dot {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
     background: #333;
     border-radius: 50%;
     align-self: center;
@@ -360,9 +360,9 @@ button:hover {
 .loading-text {
     font-weight: bold;
     color: #3a2512; /* Darker color for better readability */
-    animation: pulse 2s infinite;
-    text-shadow: 0px 0px 2px rgba(255, 255, 255, 0.5); /* Optional: adds subtle text shadow to help with contrast */
-    font-size: 1.1rem; /* Optional: slightly larger for better visibility */
+    animation: pulse 1s infinite;
+    text-shadow: 0px 0px 4px rgba(255, 255, 255, 0.76); /* Optional: adds subtle text shadow to help with contrast */
+    font-size: 1.5rem; /* Optional: slightly larger for better visibility */
 }
 
 @keyframes pulse {
@@ -477,4 +477,117 @@ button:hover {
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
+}
+
+/* ...existing code... */
+
+/* Styles for static dice dots */
+.static-dot {
+    width: 4px;
+    height: 4px;
+    background: #333;
+    border-radius: 50%;
+    position: absolute;
+}
+
+/* Positioning for the dots based on dice value */
+.dice-value-1 .static-dot:nth-child(1) {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.dice-value-2 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-2 .static-dot:nth-child(2) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-3 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-3 .static-dot:nth-child(2) {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.dice-value-3 .static-dot:nth-child(3) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-4 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-4 .static-dot:nth-child(2) {
+    top: 25%;
+    right: 25%;
+}
+.dice-value-4 .static-dot:nth-child(3) {
+    bottom: 25%;
+    left: 25%;
+}
+.dice-value-4 .static-dot:nth-child(4) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-5 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-5 .static-dot:nth-child(2) {
+    top: 25%;
+    right: 25%;
+}
+.dice-value-5 .static-dot:nth-child(3) {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.dice-value-5 .static-dot:nth-child(4) {
+    bottom: 25%;
+    left: 25%;
+}
+.dice-value-5 .static-dot:nth-child(5) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-6 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-6 .static-dot:nth-child(2) {
+    top: 50%;
+    left: 25%;
+    transform: translateY(-50%);
+}
+.dice-value-6 .static-dot:nth-child(3) {
+    bottom: 25%;
+    left: 25%;
+}
+.dice-value-6 .static-dot:nth-child(4) {
+    top: 25%;
+    right: 25%;
+}
+.dice-value-6 .static-dot:nth-child(5) {
+    top: 50%;
+    right: 25%;
+    transform: translateY(-50%);
+}
+.dice-value-6 .static-dot:nth-child(6) {
+    bottom: 25%;
+    right: 25%;
+}
+
+/* Adjust the static dice size to better fit the dots */
+.dice {
+    width: 35px;
+    height: 35px;
 }
