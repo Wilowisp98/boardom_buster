@@ -1,0 +1,661 @@
+:root {
+    --wood-color: #8B4513;
+    --paper-color: #f8f0d7;
+    --accent-color: #5a3921;
+    --highlight-color: #d4a76a;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+body {
+    background-color: #2c3e50;
+    background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+    color: #333;
+    min-height: 100vh;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.game-board {
+    background-color: var(--wood-color);
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    max-width: 900px;
+    width: 100%;
+    padding: 25px;
+    position: relative;
+    border: 20px solid #5a3921;
+    border-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h100v100H0z' fill='%235a3921'/%3E%3Cpath d='M10 10h80v80H10z' fill='none' stroke='%23d4a76a' stroke-width='3'/%3E%3C/svg%3E");
+    border-image-slice: 30;
+    border-image-width: 15px;
+}
+
+.game-name {
+    text-align: center;
+    margin-bottom: 15px;
+    color: var(--paper-color);
+    letter-spacing: 2px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.game-name h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    font-family: 'Copperplate', fantasy;
+}
+
+.game-name p {
+    font-style: italic;
+}
+
+.game-card {
+    background-color: var(--paper-color);
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 3px 3px 15px rgba(0, 0, 0, 0.2);
+    margin-bottom: 20px;
+}
+
+.search-area h2 {
+    border-bottom: 2px solid var(--accent-color);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+    color: var(--accent-color);
+    font-family: 'Copperplate', fantasy;
+}
+
+.dice {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    background: #fff;
+    border-radius: 5px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    color: #333;
+    font-size: 16px;
+    transform: rotate(15deg);
+}
+
+.dice-1 {
+    top: 15px;
+    right: 40px;
+}
+
+.dice-2 {
+    bottom: 30px;
+    left: 40px;
+    transform: rotate(-10deg);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: var(--accent-color);
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px;
+    background-color: #fff;
+    transition: all 0.3s;
+}
+
+.form-group input:focus {
+    border-color: var(--accent-color);
+    outline: none;
+    box-shadow: 0 0 5px rgba(90, 57, 33, 0.5);
+}
+
+button {
+    background-color: var(--accent-color);
+    color: #fff;
+    border: none;
+    padding: 12px 24px;
+    font-size: 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-weight: bold;
+    letter-spacing: 1px;
+    box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+button:hover {
+    background-color: var(--highlight-color);
+    transform: translateY(-2px);
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.results-area {
+    background-color: var(--paper-color);
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 3px 3px 15px rgba(0, 0, 0, 0.2);
+}
+
+.recommendation-title {
+    text-align: center;
+    margin-bottom: 20px;
+    color: var(--accent-color);
+    font-family: 'Copperplate', fantasy;
+    border-bottom: 2px solid var(--accent-color);
+    padding-bottom: 10px;
+}
+
+.recommendation-item {
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s;
+    position: relative;
+}
+
+.recommendation-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+}
+
+.game-title {
+    font-weight: bold;
+    font-size: 1.3rem;
+    color: var(--accent-color);
+    margin-bottom: 10px;
+}
+
+.why-recommend {
+    color: #666;
+    font-style: italic;
+    border-left: 3px solid var(--highlight-color);
+    padding-left: 15px;
+    margin-top: 10px;
+}
+
+.loading {
+    text-align: center;
+    padding: 30px;
+    display: none;
+}
+
+.dice-container {
+    perspective: 1000px;
+    width: 60px;
+    height: 60px;
+    position: relative;
+    margin: 0 auto 20px;
+}
+
+.dice-3d {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    animation: rollDice 4s infinite;
+}
+
+.dice-face {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    background: #fff;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    box-sizing: border-box;
+    display: grid;
+    grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+    padding: 5px;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    background: #333;
+    border-radius: 50%;
+    align-self: center;
+    justify-self: center;
+}
+
+/* First face - 1 dot in center */
+.dice-face:nth-child(1) { 
+    transform: translateZ(30px); 
+}
+.dice-face:nth-child(1) .dot:nth-child(1) {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+/* Second face - 2 dots in opposite corners */
+.dice-face:nth-child(2) { 
+    transform: rotateY(180deg) translateZ(30px); 
+}
+.dice-face:nth-child(2) .dot:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+}
+.dice-face:nth-child(2) .dot:nth-child(2) {
+    grid-column: 3;
+    grid-row: 3;
+}
+
+/* Third face - 3 dots in diagonal */
+.dice-face:nth-child(3) { 
+    transform: rotateY(90deg) translateZ(30px); 
+}
+.dice-face:nth-child(3) .dot:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+}
+.dice-face:nth-child(3) .dot:nth-child(2) {
+    grid-column: 2;
+    grid-row: 2;
+}
+.dice-face:nth-child(3) .dot:nth-child(3) {
+    grid-column: 3;
+    grid-row: 3;
+}
+
+/* Fourth face - 4 dots in corners */
+.dice-face:nth-child(4) { 
+    transform: rotateY(-90deg) translateZ(30px); 
+}
+.dice-face:nth-child(4) .dot:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+}
+.dice-face:nth-child(4) .dot:nth-child(2) {
+    grid-column: 3;
+    grid-row: 1;
+}
+.dice-face:nth-child(4) .dot:nth-child(3) {
+    grid-column: 1;
+    grid-row: 3;
+}
+.dice-face:nth-child(4) .dot:nth-child(4) {
+    grid-column: 3;
+    grid-row: 3;
+}
+
+/* Fifth face - 5 dots in X pattern */
+.dice-face:nth-child(5) { 
+    transform: rotateX(90deg) translateZ(30px); 
+}
+.dice-face:nth-child(5) .dot:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+}
+.dice-face:nth-child(5) .dot:nth-child(2) {
+    grid-column: 3;
+    grid-row: 1;
+}
+.dice-face:nth-child(5) .dot:nth-child(3) {
+    grid-column: 2;
+    grid-row: 2;
+}
+.dice-face:nth-child(5) .dot:nth-child(4) {
+    grid-column: 1;
+    grid-row: 3;
+}
+.dice-face:nth-child(5) .dot:nth-child(5) {
+    grid-column: 3;
+    grid-row: 3;
+}
+
+/* Sixth face - 6 dots in 2 columns */
+.dice-face:nth-child(6) { 
+    transform: rotateX(-90deg) translateZ(30px); 
+}
+.dice-face:nth-child(6) .dot:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+}
+.dice-face:nth-child(6) .dot:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+}
+.dice-face:nth-child(6) .dot:nth-child(3) {
+    grid-column: 1;
+    grid-row: 3;
+}
+.dice-face:nth-child(6) .dot:nth-child(4) {
+    grid-column: 3;
+    grid-row: 1;
+}
+.dice-face:nth-child(6) .dot:nth-child(5) {
+    grid-column: 3;
+    grid-row: 2;
+}
+.dice-face:nth-child(6) .dot:nth-child(6) {
+    grid-column: 3;
+    grid-row: 3;
+}
+
+@keyframes rollDice {
+    0% { transform: rotateX(0) rotateY(0); }
+    25% { transform: rotateX(180deg) rotateY(90deg); }
+    50% { transform: rotateX(270deg) rotateY(180deg); }
+    75% { transform: rotateX(180deg) rotateY(270deg); }
+    100% { transform: rotateX(360deg) rotateY(360deg); }
+}
+
+.loading-text {
+    font-weight: bold;
+    color: #3a2512; /* Darker color for better readability */
+    animation: pulse 1s infinite;
+    text-shadow: 0px 0px 4px rgba(255, 255, 255, 0.76); /* Optional: adds subtle text shadow to help with contrast */
+    font-size: 1.5rem; /* Optional: slightly larger for better visibility */
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+.error-message {
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #e74c3c;
+    margin-top: 15px;
+    color: #e74c3c;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .game-board {
+        padding: 15px;
+    }
+    
+    .game-name h1 {
+        font-size: 2rem;
+    }
+    
+    .dice {
+        width: 25px;
+        height: 25px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .game-board {
+        border-width: 10px;
+    }
+    
+    .game-name h1 {
+        font-size: 1.8rem;
+    }
+    
+    .dice {
+        display: none;
+    }
+}
+
+/* ...existing code... */
+
+/* Feedback section styles */
+.feedback-section {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+}
+
+.feedback-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.feedback-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.feedback-btn {
+    background-color: #f5f5f5;
+    color: #333;
+    border: 1px solid #ddd;
+    padding: 8px 15px;
+    font-size: 0.9rem;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.feedback-btn span {
+    margin-right: 5px;
+    font-size: 1.1rem;
+}
+
+.like-btn:hover {
+    background-color: #e6f7e6;
+    border-color: #90EE90;
+    color: #2e7d32;
+}
+
+.dislike-btn:hover {
+    background-color: #ffebee;
+    border-color: #ffcdd2;
+    color: #c62828;
+}
+
+.feedback-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.feedback-thanks {
+    margin-top: 10px;
+    font-style: italic;
+    color: var(--accent-color);
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ...existing code... */
+
+/* Styles for static dice dots */
+.static-dot {
+    width: 4px;
+    height: 4px;
+    background: #333;
+    border-radius: 50%;
+    position: absolute;
+}
+
+/* Positioning for the dots based on dice value */
+.dice-value-1 .static-dot:nth-child(1) {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.dice-value-2 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-2 .static-dot:nth-child(2) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-3 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-3 .static-dot:nth-child(2) {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.dice-value-3 .static-dot:nth-child(3) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-4 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-4 .static-dot:nth-child(2) {
+    top: 25%;
+    right: 25%;
+}
+.dice-value-4 .static-dot:nth-child(3) {
+    bottom: 25%;
+    left: 25%;
+}
+.dice-value-4 .static-dot:nth-child(4) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-5 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-5 .static-dot:nth-child(2) {
+    top: 25%;
+    right: 25%;
+}
+.dice-value-5 .static-dot:nth-child(3) {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.dice-value-5 .static-dot:nth-child(4) {
+    bottom: 25%;
+    left: 25%;
+}
+.dice-value-5 .static-dot:nth-child(5) {
+    bottom: 25%;
+    right: 25%;
+}
+
+.dice-value-6 .static-dot:nth-child(1) {
+    top: 25%;
+    left: 25%;
+}
+.dice-value-6 .static-dot:nth-child(2) {
+    top: 50%;
+    left: 25%;
+    transform: translateY(-50%);
+}
+.dice-value-6 .static-dot:nth-child(3) {
+    bottom: 25%;
+    left: 25%;
+}
+.dice-value-6 .static-dot:nth-child(4) {
+    top: 25%;
+    right: 25%;
+}
+.dice-value-6 .static-dot:nth-child(5) {
+    top: 50%;
+    right: 25%;
+    transform: translateY(-50%);
+}
+.dice-value-6 .static-dot:nth-child(6) {
+    bottom: 25%;
+    right: 25%;
+}
+
+/* Adjust the static dice size to better fit the dots */
+.dice {
+    width: 35px;
+    height: 35px;
+}
+
+/* Detailed feedback styles */
+.detailed-feedback {
+    margin-top: 15px;
+    animation: fadeIn 0.3s;
+}
+
+.feedback-reasons {
+    margin-bottom: 15px;
+}
+
+.feedback-reason-option {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.feedback-reason-option input[type="radio"] {
+    margin-right: 8px;
+}
+
+.feedback-reason-option label {
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+.feedback-comment {
+    margin-bottom: 15px;
+}
+
+.feedback-comment label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.95rem;
+    color: #666;
+}
+
+.feedback-comment textarea {
+    width: 100%;
+    height: 80px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 0.95rem;
+}
+
+.feedback-comment textarea:focus {
+    border-color: var(--accent-color);
+    outline: none;
+    box-shadow: 0 0 4px rgba(90, 57, 33, 0.3);
+}
+
+.feedback-submit {
+    padding: 8px 15px;
+    font-size: 0.95rem;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.feedback-submit:hover {
+    background-color: var(--highlight-color);
+}

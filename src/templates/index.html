@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boardom Buster - Board Game Recommendations</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="game-board">
+        <div class="dice dice-1">6</div>
+        <div class="dice dice-2">3</div>
+        
+        <div class="game-name">
+            <h1>Boardom Buster</h1>
+            <p>Your Personal Board Game Discovery Companion</p>
+        </div>
+        
+        <div class="game-card search-area">
+            <h2>Find Your Next Favorite Game</h2>
+            <form id="recommendation-form">
+                <div class="form-group">
+                    <label for="game-name">Tell us a board game you enjoy:</label>
+                    <input type="text" id="game-name" name="game_name" list="game-list" placeholder="e.g., Catan, Ticket to Ride, Pandemic..." required>
+                    <datalist id="game-list">
+                        {% for game in game_names %}
+                        <option value="{{ game }}">
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <button type="submit">Discover Games</button>
+            </form>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="dice-container">
+                <div class="dice-3d">
+                    <div class="dice-face">
+                        <div class="dot"></div>
+                    </div>
+                    <div class="dice-face">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                    <div class="dice-face">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                    <div class="dice-face">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                    <div class="dice-face">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                    <div class="dice-face">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                </div>
+            </div>
+            <p class="loading-text">Rolling for recommendations...</p>
+        </div>
+        
+        <div class="results-area" id="results" style="display: none;">
+            <h2 class="recommendation-title">Games You Might Enjoy</h2>
+            <!-- Results will be inserted here by JavaScript -->
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
