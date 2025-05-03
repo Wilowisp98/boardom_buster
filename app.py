@@ -1,8 +1,8 @@
 # app.py
 from flask import Flask, render_template, request, jsonify
 import polars as pl
-import data_prep as data_prep
-from model.binning_input_games import bin_board_games
+import data_processing.data_prep as data_prep
+# from model.binning_input_games import bin_board_games
 from model.cluster_games import bgClusters
 from model.recommend_games import RecommendationEngine
 import os
@@ -41,7 +41,6 @@ if not os.path.exists(FEEDBACK_FILE):
 
 @app.route('/')
 def index():
-    # Get a list of all game names for autocomplete
     game_names = df["game_name"].to_list()
     return render_template('index.html', game_names=game_names)
 

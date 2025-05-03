@@ -96,7 +96,6 @@ class BGG:
                             self.logger.warning(f"No data found for game IDs {game_ids[0]} to {game_ids[-1]}")
                             return []
 
-                        # Handle both single and multiple items
                         items = response_data['items']['item']
                         if not isinstance(items, list):
                             items = [items]

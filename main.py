@@ -1,6 +1,6 @@
 import asyncio
 from bgg.bgg import main_bgg
-import data_prep as data_prep
+import data_processing.data_prep as data_prep
 from model.binning_input_games import bin_board_games
 from model.cluster_games import bgClusters
 from model.recommend_games import RecommendationEngine

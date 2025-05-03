@@ -1,28 +1,27 @@
-import polars as pl
+import os
+import time
+import pickle
+import io
+from contextlib import redirect_stdout
+
 import numpy as np
-from typing import List, Dict, Any
-from sklearn.manifold import TSNE
 import polars as pl
-import numpy as np
+
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
-import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-import os
-import pickle
-import hashlib
-import time
 
-# Constants
-RELEVANT_COLUMNS: List[str] = [
-    "AGE_GROUP",
-    "GAME_CAT",
-    "LANGUAGE_DEPENDENCY",
-    "GAME_DURATION",
-    "GAME_DIFFICULTY"
-]
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+
+from utils import *
+from configs import *
+
+# TO DO:
+# - Change prints to logging.
+# - Add error handling.
+# - Refactor plotting.
 
 class bgClusters:
     """
@@ -30,38 +29,11 @@ class bgClusters:
     """
     
     def __init__(self):
-        self.scaler = StandardScaler()
-        self.games_df = None
-        self.feature_data = None
-        self.cluster_descriptions = None
-        self.id_column = None
-        self.name_column = None
-        self.constraint_columns = []
         self.clusters = {}
-        self.scaled_features = None
-
-    def get_feature_columns(self, df: pl.DataFrame) -> List[str]:
-        """
-        Gets all feature columns based on configured prefixes.
-        
-        Args:
-            df: Dataframe containing game data.
-            
-        Returns:
-            List of column names matching the configured prefixes.
-        """
-        feature_columns = []
-        for prefix in RELEVANT_COLUMNS:
-            matching_cols = [col for col in df.columns if col.startswith(prefix)]
-            feature_columns.extend(matching_cols)
-
-        return feature_columns
+        self.clusters_descriptions = {}
+        self.constraint_columns = []
     
-    #############################################
-    # MAIN PUBLIC INTERFACE
-    #############################################
-    
-    def fit(self, games_df, constraint_columns, name_column=None, cache_dir='model/clustering_results/cluster', cache_filename='clusters.pkl'):
+    def fit(self, games_df, constraint_columns, name_column: str = None, restart_model: bool = False, plot: bool = PLOT):
         """
         Fit the model with constrained clustering.
 
@@ -74,34 +46,29 @@ class bgClusters:
             Example: ['GAME_CAT_GROUP_card_game', 'GAME_CAT_GROUP_abstract_strategy']
         name_column : str, optional
             Name of the column containing game names
-        cache_dir : str, optional
-            Directory to store cached clustering results
-        cache_filename : str, optional
+        final_model_dir : str, optional
+            Directory to store clustering results
+        model_filename : str, optional
             Name of the cache file to use
+        restart_mode: bool, optional
+            If the model should be rebuilt. Ex: There is new data.
             
         Returns:
         --------
         self : bgClusters
             The fitted model instance
         """
-        # Create cache directory if it doesn't exist
-        os.makedirs(cache_dir, exist_ok=True)
+        os.makedirs(FINAL_MODEL_DIR, exist_ok=True)
+        model_file = os.path.join(FINAL_MODEL_DIR, MODEL_FILENAME)
 
-        # Use a simple filename for the cache
-        cache_file = os.path.join(cache_dir, cache_filename)
+        if os.path.exists(model_file) and not restart_model:
+            print(f"Loading cached clustering results from {model_file}")
 
-        # Load from cache if it exists
-        if os.path.exists(cache_file):
-            print(f"Loading cached clustering results from {cache_file}")
-            with open(cache_file, 'rb') as f:
-                cached_data = pickle.load(f)
+            with open(model_file, 'rb') as f:
+                saved_model = pickle.load(f)
 
-                # Reconstruct clusters
-                self.clusters = {}
-
-                if 'cluster_to_games' in cached_data:
-                    # New simplified format
-                    cluster_mapping = cached_data['cluster_to_games']
+                if 'cluster_to_games' in saved_model:
+                    cluster_mapping = saved_model['cluster_to_games']
 
                     for cluster_id, game_names in cluster_mapping.items():
                         self.clusters[cluster_id] = {
@@ -110,51 +77,32 @@ class bgClusters:
                             'count': len(game_names)
                         }
 
-                    # Store the games_df
                     self.games_df = games_df
-
-                    # Infer the rest based on the games_df
                     self._add_cluster_labels()
                     self._generate_cluster_descriptions()
-
-                    # Set required attributes for proper functioning
-                    self.feature_columns = self.get_feature_columns(self.games_df)
+                    self.feature_columns = get_feature_columns(self.games_df, RELEVANT_COLUMNS)
                     self.name_column = name_column
                     self.constraint_columns = constraint_columns
-
                     return self
 
-        # If no cache exists, proceed with clustering
-        self.games_df = games_df
-        self.unconstrained_df = games_df
+        self.feature_columns = get_feature_columns(games_df, RELEVANT_COLUMNS)
+        self.games_df = games_df.select(self.feature_columns).to_numpy()
+        self.unconstrained_df = self.games_df
+        self.feature_count = self.games_df.shape[1]
         self.name_column = name_column
         self.constraint_columns = constraint_columns
 
-        # Extract feature data
-        self.feature_columns = self.get_feature_columns(self.games_df)
-        self.feature_data = self.games_df.select(self.feature_columns).to_numpy()
-
-        # Handle constrained and unconstrained clustering
         for column in self.constraint_columns:
             constrained_df = self.games_df.filter(pl.col(column) == 1)
             self.unconstrained_df = self.unconstrained_df.filter(pl.col(column) != 1)
-            self._create_constrained_clusters(constrained_df, constraint_name=column.split('GAME_CAT_GROUP_')[1])
+            self._create_constrained_clusters(constrained_df, constraint_name=column.split('GAME_CAT_GROUP_')[1], plot=plot)
 
-        # Create clusters for unconstrained data
-        self._create_constrained_clusters(self.unconstrained_df)
-
-        # Add cluster labels to the DataFrame
+        self._create_constrained_clusters(self.unconstrained_df, plot=plot)
         self._add_cluster_labels()
-
-        # Generate cluster descriptions
         self._generate_cluster_descriptions()
-
-        # Generate visualizations of clustering results
-        self._visualize_clustering_results()
-        
-        # Save results to cache
-        self._save_to_cache(cache_file)
-
+        if plot:
+            self._visualize_clustering_results()
+        self._save(model_file)
         return self
     
     def _generate_cluster_descriptions(self):
@@ -166,32 +114,24 @@ class bgClusters:
         dict
             Dictionary containing descriptions for each cluster
         """
-        self.cluster_descriptions = {}
         
         for cluster_id, cluster_info in self.clusters.items():
-            # Get games in this cluster
             cluster_games = self.games_df.filter(pl.col("cluster") == cluster_id)
-            
             if cluster_games.height == 0:
                 continue
                 
-            # Calculate average feature values for this cluster
             cluster_means = {}
             for feature in self.feature_columns:
                 cluster_means[feature] = cluster_games.select(pl.col(feature)).mean().item()
             
-            # Find the most important features (highest average values)
             sorted_features = sorted(cluster_means.items(), key=lambda x: x[1], reverse=True)
             top_features = [feature for feature, _ in sorted_features[:5]]
-            
-            # Create a description
             constraint_name = cluster_info['constraint'].replace("GAME_CAT_GROUP_", "").replace("_", " ")
             
             if cluster_info.get('is_subcluster', False):
                 parent_constraint = cluster_info.get('parent_constraint', '')
                 parent_name = parent_constraint.replace("_", " ")
                 subcluster_id = cluster_info.get('subcluster_id', 0)
-                
                 description = f"Cluster {cluster_id}: {parent_name.title()} (Subcluster {subcluster_id}) games characterized by "
             elif any(f"GAME_CAT_GROUP_{constraint_name.split('_')[0]}" in self.constraint_columns for constraint_name in [cluster_info['constraint']]):
                 description = f"Cluster {cluster_id}: {constraint_name.title()} games characterized by "
@@ -207,13 +147,12 @@ class bgClusters:
                 for f in top_features
             ])
             
-            # Get sample games
             if self.name_column:
                 sample_games = cluster_games.select(pl.col(self.name_column)).to_series().to_list()[:5]
             else:
                 sample_games = [f"Game #{i}" for i in range(min(5, cluster_games.height))]
             
-            self.cluster_descriptions[cluster_id] = {
+            self.clusters_descriptions[cluster_id] = {
                 'description': description,
                 'constraint': cluster_info['constraint'],
                 'is_subcluster': cluster_info.get('is_subcluster', False),
@@ -222,8 +161,6 @@ class bgClusters:
                 'count': cluster_games.height,
                 'sample_games': sample_games
             }
-        
-        return self.cluster_descriptions
     
     def get_all_clusters_info(self):
         """
@@ -240,9 +177,9 @@ class bgClusters:
     # CLUSTERING IMPLEMENTATION
     #############################################
     
-    def _create_constrained_clusters(self, data_to_cluster, constraint_name=None):
+    def _create_constrained_clusters(self, data_to_cluster, constraint_name: str = None, plot: bool = False):
         """
-        Create clusters based on constraint columns, with optional subclustering within constraints.
+        Create clusters based on constraint columns.
         
         Parameters:
         -----------
@@ -253,41 +190,26 @@ class bgClusters:
         constraint_name : str, optional
             Name of the constraint
         """
-        # Don't reset clusters on each call, initialize if needed
-        if not hasattr(self, 'clusters') or self.clusters is None:
-            self.clusters = {}
-
-        # Get current cluster ID
         cluster_id = len(self.clusters)
-
-        # Extract feature data for clustering
-        feature_data = data_to_cluster.select(self.feature_columns).to_numpy()
-
-        # Find optimal number of clusters
         optimal_k = self._find_optimal_k(
-            data=feature_data,
-            constraint_name=constraint_name
+            data=data_to_cluster,
+            constraint_name=constraint_name,
+            plot=plot
         )
 
-        # Apply K-means to create subclusters
         kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init=10)
-        labels = kmeans.fit_predict(feature_data)
+        labels = kmeans.fit_predict(data_to_cluster)
 
-        # Create cluster entries for each subcluster
         for sub_id in range(optimal_k):
-            # Get indices of games in this subcluster
             sub_indices = [i for i in range(len(labels)) if labels[i] == sub_id]
 
             if sub_indices:
-                # Get game names if name column exists
                 if self.name_column and self.name_column in data_to_cluster.columns:
                     game_ids = data_to_cluster.select(pl.col(self.name_column)).to_series().to_list()
                     sub_games = [game_ids[i] for i in sub_indices]
                 else:
-                    # Fall back to indices if no name column
                     sub_games = sub_indices
 
-                # Handle naming based on whether this is a constraint-based cluster
                 if constraint_name:
                     subcluster_name = f"{constraint_name}_subcluster_{sub_id}"
                     parent_constraint = constraint_name
@@ -300,15 +222,15 @@ class bgClusters:
                 self.clusters[cluster_id] = {
                     'constraint': subcluster_name,
                     'parent_constraint': parent_constraint,
-                    'game_names': sub_games,  # Store game names instead of indices
-                    'indices': sub_indices,   # Keep indices for backward compatibility
+                    'game_names': sub_games,
+                    'indices': sub_indices,
                     'count': len(sub_indices),
                     'is_subcluster': is_subcluster,
                     'subcluster_id': sub_id
                 }
                 cluster_id += 1
 
-    def _find_optimal_k(self, data, constraint_name: str = ''):
+    def _find_optimal_k(self, data, constraint_name: str = '', plot: bool = False):
         """
         Find the optimal number of clusters using multiple evaluation metrics with adaptive size constraints.
         Includes a complexity penalty to prevent selecting too many clusters.
@@ -325,88 +247,45 @@ class bgClusters:
         int
             Optimal number of clusters
         """
-        from sklearn.metrics import silhouette_score
-        import numpy as np
-        import matplotlib.pyplot as plt
-        import os
-        import io
-        from contextlib import redirect_stdout
-
-        # Create output directory if it doesn't exist
-        os.makedirs("model/clustering_results", exist_ok=True)
-
-        # Prepare to capture printed output
         captured_output = io.StringIO()
+
         with redirect_stdout(captured_output):
-            # Calculate adaptive optimal range based on data size
             data_size = len(data)
             adaptive_min_k = max(2, int(np.log(data_size)))
             adaptive_max_k = max(5, int(np.sqrt(data_size)) / 2)
+            max_k = min(self.feature_count, data_size - 1, adaptive_max_k * 2)
 
-            # Adjust max_k based on data dimensions and adaptive range
-            feature_count = data.shape[1]
-            max_k = min(feature_count, data_size - 1, adaptive_max_k * 2)
-
-            # Initialize storage for metrics
             k_range = range(2, int(max_k * 2))
             silhouette_scores = []
             cluster_size_scores = []
-
-            # Evaluate each k using multiple metrics
             for k in k_range:
                 kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
                 labels = kmeans.fit_predict(data)
 
-                # Calculate Silhouette score (higher is better)
-                if data_size > k and k > 1:
+                if data_size > k:
                     sil_score = silhouette_score(data, labels)
                     silhouette_scores.append(sil_score)
                 else:
                     silhouette_scores.append(0)
 
-                # Calculate cluster size appropriateness score
                 if adaptive_min_k <= k <= max_k:
-                    # Full score within the optimal range
                     cluster_size_scores.append(1.0)
                 else:
-                    # Gradually decreasing score outside optimal range
                     distance = min(abs(k - adaptive_min_k), abs(k - max_k))
                     max_reasonable = int(np.sqrt(data_size) / 2)
                     score = max(0, 1.0 - (distance / max(1, max_reasonable)))
                     cluster_size_scores.append(score)
 
-            # Normalize scores to [0, 1] range for fair comparison
-            def normalize(scores, higher_is_better=True):
-                if all(s == scores[0] for s in scores):
-                    return [1] * len(scores) if higher_is_better else [0] * len(scores)
+            norm_silhouette = normalize(silhouette_scores, higher_is_better=True)
+            norm_cluster_size = cluster_size_scores
 
-                min_val, max_val = min(scores), max(scores)
-                if min_val == max_val:
-                    return [0.5] * len(scores)
-
-                # For metrics where higher is better, normalize to [0,1]
-                normalized = [(s - min_val) / (max_val - min_val) for s in scores]
-
-                if not higher_is_better:
-                    normalized = [1 - n for n in normalized]  # Invert scores where lower is better
-
-                return normalized
-
-            # Apply normalized scores
-            norm_silhouette = normalize(silhouette_scores, higher_is_better=True)  # Higher is better
-            norm_cluster_size = cluster_size_scores  # Already normalized
-
-            # Calculate complexity penalty - increases with k
             complexity_penalty = []
             penalty_weight = 0.2
             max_k_value = max(k_range)
-
             for k in k_range:
-                # Quadratic penalty increases more rapidly as k increases
                 penalty = penalty_weight * (k / max_k_value)**2
                 complexity_penalty.append(penalty)
 
-            # Weighted voting - combine all metrics
             weights = {
                 'silhouette': 0.65,
                 'cluster_size': 0.35 
@@ -414,141 +293,136 @@ class bgClusters:
 
             final_scores = []
             final_scores_with_penalty = []
-
             for i in range(len(k_range)):
-                # Original score without penalty
                 score = (
                     weights['silhouette'] * norm_silhouette[i] +
                     weights['cluster_size'] * norm_cluster_size[i]
                 )
                 final_scores.append(score)
-
-                # Score with complexity penalty applied
                 penalized_score = score - complexity_penalty[i]
                 final_scores_with_penalty.append(penalized_score)
 
-            # Find the optimal k from final_scores_with_penalty
             best_idx = np.argmax(final_scores_with_penalty)
             optimal_k = k_range[best_idx]
 
-            # VISUALIZATION 0: Optimization process
-            fig, axes = plt.subplots(2, 1, figsize=(12, 10), gridspec_kw={'height_ratios': [1, 1]})
+            if plot:
+                # VISUALIZATION 0: Optimization process
+                fig, axes = plt.subplots(2, 1, figsize=(12, 10), gridspec_kw={'height_ratios': [1, 1]})
 
-            # Top plot: Detailed progression of each k evaluation
-            ax = axes[0]
-            x = np.arange(len(k_range))
-            width = 0.3
-            offsets = [-0.5, 0.5]
+                # Top plot: Detailed progression of each k evaluation
+                ax = axes[0]
+                x = np.arange(len(k_range))
+                width = 0.3
+                offsets = [-0.5, 0.5]
 
-            # Plot bars for each metric side by side
-            ax.bar(x + offsets[0]*width, norm_silhouette, width, label='Silhouette', color='blue', alpha=0.7)
-            ax.bar(x + offsets[1]*width, norm_cluster_size, width, label='Cluster Size', color='orange', alpha=0.7)
+                # Plot bars for each metric side by side
+                ax.bar(x + offsets[0]*width, norm_silhouette, width, label='Silhouette', color='blue', alpha=0.7)
+                ax.bar(x + offsets[1]*width, norm_cluster_size, width, label='Cluster Size', color='orange', alpha=0.7)
 
-            # Add line showing weighted total with and without penalty
-            ax.plot(x, final_scores, 'ko-', linewidth=2, label='Original Score')
-            ax.plot(x, final_scores_with_penalty, 'ro-', linewidth=2, label='Score with Penalty')
+                # Add line showing weighted total with and without penalty
+                ax.plot(x, final_scores, 'ko-', linewidth=2, label='Original Score')
+                ax.plot(x, final_scores_with_penalty, 'ro-', linewidth=2, label='Score with Penalty')
 
-            # Add complexity penalty visualization
-            ax.plot(x, complexity_penalty, 'g--', linewidth=1.5, label='Complexity Penalty')
+                # Add complexity penalty visualization
+                ax.plot(x, complexity_penalty, 'g--', linewidth=1.5, label='Complexity Penalty')
 
-            # Highlight the best k
-            best_k_idx = list(k_range).index(optimal_k)
-            ax.axvline(x=best_k_idx, color='black', linestyle='--')
-            ax.text(best_k_idx, max(final_scores)+0.05, f'Optimal k={optimal_k}', 
-                    ha='center', va='bottom', fontweight='bold')
+                # Highlight the best k
+                best_k_idx = list(k_range).index(optimal_k)
+                ax.axvline(x=best_k_idx, color='black', linestyle='--')
+                ax.text(best_k_idx, max(final_scores)+0.05, f'Optimal k={optimal_k}', 
+                        ha='center', va='bottom', fontweight='bold')
 
-            ax.set_xticks(x)
-            ax.set_xticklabels(k_range)
-            ax.set_xlabel('Number of Clusters (k)')
-            ax.set_ylabel('Normalized Score')
-            ax.set_title('Detailed View of Each Metric by Cluster Count')
-            ax.grid(True, linestyle='--', alpha=0.5)
-            ax.legend(loc='upper left')
+                ax.set_xticks(x)
+                ax.set_xticklabels(k_range)
+                ax.set_xlabel('Number of Clusters (k)')
+                ax.set_ylabel('Normalized Score')
+                ax.set_title('Detailed View of Each Metric by Cluster Count')
+                ax.grid(True, linestyle='--', alpha=0.5)
+                ax.legend(loc='upper left')
 
-            # Bottom plot: Progression of metrics across k values
-            ax = axes[1]
-            metrics = [
-                ('Silhouette', norm_silhouette, 'blue', 'o-'), 
-                ('Cluster Size', norm_cluster_size, 'orange', 'p-'),
-                ('Original Score', final_scores, 'black', '*-'),
-                ('Score with Penalty', final_scores_with_penalty, 'red', 'x-'),
-                ('Complexity Penalty', complexity_penalty, 'green', '--')
-            ]
+                # Bottom plot: Progression of metrics across k values
+                ax = axes[1]
+                metrics = [
+                    ('Silhouette', norm_silhouette, 'blue', 'o-'), 
+                    ('Cluster Size', norm_cluster_size, 'orange', 'p-'),
+                    ('Original Score', final_scores, 'black', '*-'),
+                    ('Score with Penalty', final_scores_with_penalty, 'red', 'x-'),
+                    ('Complexity Penalty', complexity_penalty, 'green', '--')
+                ]
 
-            for name, values, color, style in metrics:
-                ax.plot(k_range, values, style, label=name, color=color)
+                for name, values, color, style in metrics:
+                    ax.plot(k_range, values, style, label=name, color=color)
 
-            ax.axvline(x=optimal_k, color='black', linestyle='--')
-            ax.set_xlabel('Number of Clusters (k)')
-            ax.set_ylabel('Score')
-            ax.set_title('Progression of Evaluation Metrics Across k Values')
-            ax.grid(True, linestyle='--', alpha=0.7)
-            ax.legend(loc='upper right')
+                ax.axvline(x=optimal_k, color='black', linestyle='--')
+                ax.set_xlabel('Number of Clusters (k)')
+                ax.set_ylabel('Score')
+                ax.set_title('Progression of Evaluation Metrics Across k Values')
+                ax.grid(True, linestyle='--', alpha=0.7)
+                ax.legend(loc='upper right')
 
-            plt.tight_layout()
-            # Save to file
-            fig.savefig(f'model/clustering_results/optimization_process_{constraint_name}.png', dpi=300, bbox_inches='tight')
-            plt.close(fig)
+                plt.tight_layout()
+                # Save to file
+                fig.savefig(f'model/clustering_results/optimization_process_{constraint_name}.png', dpi=300, bbox_inches='tight')
+                plt.close(fig)
 
-            # VISUALIZATION 1: Individual metrics (original)
-            fig = plt.figure(figsize=(12, 6))
-            plt.plot(k_range, norm_silhouette, 'o-', label='Silhouette Score (normalized)', color='blue')
-            plt.plot(k_range, norm_cluster_size, 'p-', label='Cluster Size Score', color='orange')
-            plt.plot(k_range, complexity_penalty, '--', label='Complexity Penalty', color='green')
-            plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
-            plt.xlabel('Number of Clusters (k)')
-            plt.ylabel('Normalized Score')
-            plt.title('Individual Evaluation Metrics for Cluster Optimization')
-            plt.grid(True, linestyle='--', alpha=0.7)
-            plt.legend()
-            plt.tight_layout()
-            # Save to file
-            fig.savefig(f'model/clustering_results/individual_metrics_{constraint_name}.png', dpi=300, bbox_inches='tight')
-            plt.close(fig)
+                # VISUALIZATION 1: Individual metrics (original)
+                fig = plt.figure(figsize=(12, 6))
+                plt.plot(k_range, norm_silhouette, 'o-', label='Silhouette Score (normalized)', color='blue')
+                plt.plot(k_range, norm_cluster_size, 'p-', label='Cluster Size Score', color='orange')
+                plt.plot(k_range, complexity_penalty, '--', label='Complexity Penalty', color='green')
+                plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
+                plt.xlabel('Number of Clusters (k)')
+                plt.ylabel('Normalized Score')
+                plt.title('Individual Evaluation Metrics for Cluster Optimization')
+                plt.grid(True, linestyle='--', alpha=0.7)
+                plt.legend()
+                plt.tight_layout()
+                # Save to file
+                fig.savefig(f'model/clustering_results/individual_metrics_{constraint_name}.png', dpi=300, bbox_inches='tight')
+                plt.close(fig)
 
-            # VISUALIZATION 2: Combined scores with iteration markers
-            fig = plt.figure(figsize=(10, 5))
-            plt.plot(k_range, final_scores, 'o-', color='blue', label='Original Score')
-            plt.plot(k_range, final_scores_with_penalty, 'o-', color='red', label='Score with Penalty')
+                # VISUALIZATION 2: Combined scores with iteration markers
+                fig = plt.figure(figsize=(10, 5))
+                plt.plot(k_range, final_scores, 'o-', color='blue', label='Original Score')
+                plt.plot(k_range, final_scores_with_penalty, 'o-', color='red', label='Score with Penalty')
 
-            # Add arrows showing the progression of testing
-            for i in range(len(k_range)-1):
-                plt.annotate('', 
-                    xy=(k_range[i+1], final_scores_with_penalty[i+1]),
-                    xytext=(k_range[i], final_scores_with_penalty[i]),
-                    arrowprops=dict(arrowstyle='->', color='gray', alpha=0.6, lw=1.5))
+                # Add arrows showing the progression of testing
+                for i in range(len(k_range)-1):
+                    plt.annotate('', 
+                        xy=(k_range[i+1], final_scores_with_penalty[i+1]),
+                        xytext=(k_range[i], final_scores_with_penalty[i]),
+                        arrowprops=dict(arrowstyle='->', color='gray', alpha=0.6, lw=1.5))
 
-            # Add iteration numbers
-            for i in range(len(k_range)):
-                plt.text(k_range[i], final_scores_with_penalty[i] + 0.02, f"{i+1}", 
-                        ha='center', va='bottom', fontsize=9, color='darkblue')
+                # Add iteration numbers
+                for i in range(len(k_range)):
+                    plt.text(k_range[i], final_scores_with_penalty[i] + 0.02, f"{i+1}", 
+                            ha='center', va='bottom', fontsize=9, color='darkblue')
 
-            plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
-            plt.xlabel('Number of Clusters (k)')
-            plt.ylabel('Score')
-            plt.title('Combined Cluster Evaluation Scores with Iteration Path')
-            plt.grid(True, linestyle='--', alpha=0.7)
-            plt.legend()
-            plt.tight_layout()
-            # Save to file
-            fig.savefig(f'model/clustering_results/combined_scores_{constraint_name}.png', dpi=300, bbox_inches='tight')
-            plt.close(fig)
+                plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
+                plt.xlabel('Number of Clusters (k)')
+                plt.ylabel('Score')
+                plt.title('Combined Cluster Evaluation Scores with Iteration Path')
+                plt.grid(True, linestyle='--', alpha=0.7)
+                plt.legend()
+                plt.tight_layout()
+                # Save to file
+                fig.savefig(f'model/clustering_results/combined_scores_{constraint_name}.png', dpi=300, bbox_inches='tight')
+                plt.close(fig)
 
-            # Print iterations summary
-            print("\nClustering Optimization Iterations:")
-            print("-" * 60)
-            print(f"{'k':>3} {'Silhouette':>12} {'Size':>12} {'Penalty':>12} {'Original':>12} {'Penalized':>12}")
-            print("-" * 60)
-            for i, k in enumerate(k_range):
-                print(f"{k:3d} {norm_silhouette[i]:12.4f} "
-                      f"{norm_cluster_size[i]:12.4f} "
-                      f"{complexity_penalty[i]:12.4f} "
-                      f"{final_scores[i]:12.4f} "
-                      f"{final_scores_with_penalty[i]:12.4f}")
-            print("-" * 60)
-            print(f"Selected optimal k = {optimal_k} (data size: {data_size})\n")
+                # Print iterations summary
+                print("\nClustering Optimization Iterations:")
+                print("-" * 60)
+                print(f"{'k':>3} {'Silhouette':>12} {'Size':>12} {'Penalty':>12} {'Original':>12} {'Penalized':>12}")
+                print("-" * 60)
+                for i, k in enumerate(k_range):
+                    print(f"{k:3d} {norm_silhouette[i]:12.4f} "
+                          f"{norm_cluster_size[i]:12.4f} "
+                          f"{complexity_penalty[i]:12.4f} "
+                          f"{final_scores[i]:12.4f} "
+                          f"{final_scores_with_penalty[i]:12.4f}")
+                print("-" * 60)
+                print(f"Selected optimal k = {optimal_k} (data size: {data_size})\n")
 
-        # Write the captured output to a file
         with open(f'model/clustering_results/clustering_log_{constraint_name}.txt', 'w') as f:
             f.write(captured_output.getvalue())
 
@@ -558,53 +432,32 @@ class bgClusters:
         """
         Add cluster labels to the DataFrame.
         """
-        # Initialize all cluster labels to -1
         cluster_labels = [-1] * self.games_df.height
-        subcluster_labels = [-1] * self.games_df.height
-        parent_constraint_labels = [""] * self.games_df.height
 
-        # Get the game names from the DataFrame
         if self.name_column and self.name_column in self.games_df.columns:
             game_names = self.games_df.select(pl.col(self.name_column)).to_series().to_list()
-
-            # Create a mapping from game name to index
             name_to_idx = {name: idx for idx, name in enumerate(game_names)}
 
-            # Assign cluster labels using game names
             for cluster_id, cluster_info in self.clusters.items():
                 for game_name in cluster_info.get('game_names', []):
                     if game_name in name_to_idx:
                         idx = name_to_idx[game_name]
                         cluster_labels[idx] = cluster_id
-
-                        # If this is a subcluster, store the subcluster ID and parent constraint
-                        if cluster_info.get('is_subcluster', False):
-                            subcluster_labels[idx] = cluster_info.get('subcluster_id', -1)
-                            parent_constraint_labels[idx] = cluster_info.get('parent_constraint', "")
         else:
-            # Fall back to using indices if no name column
             for cluster_id, cluster_info in self.clusters.items():
                 for idx in cluster_info.get('indices', []):
                     if 0 <= idx < len(cluster_labels):
                         cluster_labels[idx] = cluster_id
 
-                        # If this is a subcluster, store the subcluster ID and parent constraint
-                        if cluster_info.get('is_subcluster', False):
-                            subcluster_labels[idx] = cluster_info.get('subcluster_id', -1)
-                            parent_constraint_labels[idx] = cluster_info.get('parent_constraint', "")
-
-        # Add to DataFrame
         self.games_df = self.games_df.with_columns([
-            pl.Series("cluster", cluster_labels),
-            pl.Series("subcluster", subcluster_labels),
-            pl.Series("parent_constraint", parent_constraint_labels)
+            pl.Series("cluster", cluster_labels)
         ])
     
     #############################################
     # CACHING AND PERSISTENCE
     #############################################
 
-    def _save_to_cache(self, cache_file):
+    def _save(self, model_file):
         """
         Save minimal clustering results to cache file - only cluster numbers and game names.
 
@@ -613,41 +466,27 @@ class bgClusters:
         cache_file : str
             Path to the cache file
         """
-        # Create a simplified data structure with only essential information
         minimal_clusters = {}
 
-        # For each cluster, only store its ID and the games belonging to it
         for cluster_id, cluster_info in self.clusters.items():
             game_names = cluster_info.get('game_names', [])
             minimal_clusters[cluster_id] = game_names
 
-        # Save the minimal data structure to a file
         simplified_cache_data = {
             'cluster_to_games': minimal_clusters,
             'creation_timestamp': time.time()
         }
 
-        with open(cache_file, 'wb') as f:
+        with open(model_file, 'wb') as f:
             pickle.dump(simplified_cache_data, f)
 
-        print(f"Saved simplified cluster data to {cache_file}")
+        print(f"Saved simplified cluster data to {model_file}")
 
     def _visualize_clustering_results(self):
         """
         Generate TSNE and PCA visualizations of the clustering results.
         Saves visualizations to the clustering_results directory.
         """
-        import os
-        import numpy as np
-        import matplotlib.pyplot as plt
-        import matplotlib.colors as mcolors
-        import time
-        from sklearn.decomposition import PCA
-        from sklearn.manifold import TSNE
-        
-        # Create output directory if it doesn't exist
-        os.makedirs("model/clustering_results", exist_ok=True)
-        
         # Generate timestamp for unique filenames
         timestamp = int(time.time())
         

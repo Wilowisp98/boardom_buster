@@ -1,7 +1,7 @@
 import polars as pl
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 
 RELEVANT_COLUMNS: List[str] = [
     "AGE_GROUP",
@@ -59,11 +59,8 @@ def bin_board_games(df: pl.DataFrame, input_board_games: List[str], threshold: f
 
         if similar_bin:
             similar_bin['members'].append((game_name, row_values))
-            # Extract just the feature vectors for centroid calculation
             members_array = np.array([m[1] for m in similar_bin['members']])
             new_centroid = np.mean(members_array, axis=0)
-
-            # Round one-hot encoded features to integers
             new_centroid = np.round(new_centroid).astype(int)
             
             similar_bin['centroid'] = new_centroid
@@ -73,12 +70,11 @@ def bin_board_games(df: pl.DataFrame, input_board_games: List[str], threshold: f
                 'centroid': row_values
             })
 
-    # Format the output to be more readable
     formatted_bins = []
     for idx, bin in enumerate(bins):
         formatted_bin = {
             'bin_id': idx + 1,
-            'games': [member[0] for member in bin['members']],  # Just the game names
+            'games': [member[0] for member in bin['members']],
             'size': len(bin['members']),
             'centroid': bin['centroid'].tolist()
         }

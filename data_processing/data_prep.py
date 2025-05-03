@@ -2,100 +2,78 @@ import polars as pl
 import html
 import re
 from typing import Dict, List
+from configs import *
 
-# Constants for mappings
-BOARD_GAME_CATEGORIES = {
-'time_period_historical': ['ancient', 'medieval', 'renaissance', 'age of reason', 'american west', 'arabian', 'napoleonic', 'post-napoleonic', 'prehistoric'],
-'military_conflict': ['world war i', 'world war ii', 'korean war', 'vietnam war', 'modern warfare', 'american revolutionary war', 'american civil war', 'civil war', 'american indian wars', 'pike and shot', 'wargame'],
-'based_on_media': ['movies / tv / radio theme', 'video game theme', 'book', 'novel-based', 'comic book / strip', 'music'],
-'crime_espionage': ['murder / mystery', 'spies / secret agents', 'mafia'],
-'fantasy_supernatural': ['fantasy', 'science fiction', 'mythology', 'zombies', 'pirates'],
-'horror': ['horror'],
-'resource_management': ['economic', 'industry / manufacturing', 'farming', 'city building', 'civilization', 'territory building'],
-'card_game': ['card game'],
-'physical_components': ['dice', 'miniatures', 'collectible components'],
-'print_and_play': ['print & play'],
-'memory': ['memory'],
-'trivia': ['trivia'],
-'deduction': ['deduction'],
-'vehicles_movement': ['aviation / flight', 'trains', 'transportation', 'racing'],
-'negotiation': ['negotiation', 'bluffing'],
-'mental_skill': ['educational', 'math', 'number', 'word game', 'puzzle'],
-'social_entertainment': ['party game', 'children\'s game', 'humor', 'mature / adult'],
-'journey_discovery': ['adventure', 'exploration', 'travel', 'maze', 'nautical', 'space exploration'],
-'real_world_topics': ['religious', 'political', 'environmental', 'animals'],
-'sports': ['sports'],
-'fighting': ['fighting'],
-'abstract_strategy': ['abstract strategy'],
-'real_time': ['real-time'],
-'action_dexterity': ['action / dexterity'],
-'game_system': ['game system'],
-'electronic' : ['electronic']
-}
-LANGUAGE_DEPENDENCY_MAPPING = {
-    'No necessary in-game text': 'none',
-    'Some necessary text - easily memorized or small crib sheet': 'low',
-    'Moderate in-game text - needs crib sheet or paste ups': 'medium',
-    'Extensive use of text - massive conversion needed to be playable': 'high',
-    'Unplayable in another language': 'extreme',
-    None: None
-}
-POPULARITY_WEIGHTS: Dict[str, float] = {
-    "owned_by": 0.35,
-    "wished_by": 0.25,
-    "num_rates": 0.20,
-    "avg_rating": 0.20
-}
-UNNECESSARY_COLUMNS: List[str] = [
-    "best_num_players",
-    "families",
-    "designers",
-    "artists",
-    "publishers",
-    "min_playtime",
-    "max_playtime",
-    "min_age"
-]
-MIN_RATINGS: int = 100
-MIN_RATING: float = 6.0
+# TO DO:
+# - Study more about scores.
 
 def group_categories(df: pl.DataFrame) -> pl.DataFrame:
-    for group_name in BOARD_GAME_CATEGORIES.keys():
-        # Create column name with prefix
-        group_col_name = f"GAME_CAT_GROUP_{group_name}"
+    """
+    Group individual board game categories into broader category groups based on the BOARD_GAME_CATEGORIES 
+    configuration. Creates binary indicator columns for each category group and removes the original 
+    individual category columns.
 
-        # Get list of categories in this group
-        categories_in_group = BOARD_GAME_CATEGORIES[group_name]
+    Args:
+        df (pl.DataFrame): DataFrame containing individual board game category columns 
+            (named as GAME_CAT_{category}).
 
-        # Create expression to check if any category in this group is 1
-        group_expr = pl.lit(False)
-        for category in categories_in_group:
-            category_col = f"GAME_CAT_{category}"
-            if category_col in df.columns:
-                group_expr = group_expr | (pl.col(category_col) == 1)
+    Returns:
+        pl.DataFrame: DataFrame with new category group columns (GAME_CAT_GROUP_{group_name}) 
+            and original individual category columns removed.
 
-        # Create the new column: 1 if any category in group is 1, otherwise 0
-        df = df.with_columns(
-            pl.when(group_expr)
-            .then(pl.lit(1))
-            .otherwise(pl.lit(0))
-            .alias(group_col_name)
-        )
+    Examples:
+        >>> import polars as pl
+        >>> from configs import BOARD_GAME_CATEGORIES
+        >>> # Assuming BOARD_GAME_CATEGORIES = {"Strategy": ["Abstract", "AreaControl"]}
+        >>> df = pl.DataFrame({
+        ...     "game_name": ["Game A", "Game B", "Game C"],
+        ...     "GAME_CAT_Abstract": [1, 0, 1],
+        ...     "GAME_CAT_AreaControl": [0, 1, 1]
+        ... })
+        >>> group_categories(df)
+        shape: (3, 2)
+        ┌───────────┬─────────────────────────┐
+        │ game_name ┆ GAME_CAT_GROUP_Strategy │
+        │ ---       ┆ ---                     │
+        │ str       ┆ i32                     │
+        ╞═══════════╪═════════════════════════╡
+        │ Game A    ┆ 1                       │
+        │ Game B    ┆ 1                       │
+        │ Game C    ┆ 1                       │
+        └───────────┴─────────────────────────┘
+    """
+    try:
+        for group_name in BOARD_GAME_CATEGORIES.keys():
+            group_col_name = f"GAME_CAT_GROUP_{group_name}"
+            categories_in_group = BOARD_GAME_CATEGORIES[group_name]
 
-    # Create a list of all original category columns to drop
-    all_categories = []
-    for categories_list in BOARD_GAME_CATEGORIES.values():
-        all_categories.extend(categories_list)
+            group_expr = pl.lit(False)
+            for category in categories_in_group:
+                category_col = f"GAME_CAT_{category}"
+                if category_col in df.columns:
+                    group_expr = group_expr | (pl.col(category_col) == 1)
 
-    columns_to_drop = [f"GAME_CAT_{category}" for category in all_categories if f"GAME_CAT_{category}" in df.columns]
+            category_column = (
+                pl.when(group_expr)
+                .then(pl.lit(1))
+                .otherwise(pl.lit(0))
+            ).alias(group_col_name)
+            df = df.with_columns(category_column)
 
-    df = df.drop(columns_to_drop)
+        all_categories = []
+        for categories_list in BOARD_GAME_CATEGORIES.values():
+            all_categories.extend(categories_list)
 
-    return df
+        columns_to_drop = [f"GAME_CAT_{category}" for category in all_categories if f"GAME_CAT_{category}" in df.columns]
+        df = df.drop(columns_to_drop)
+
+        return df
+    except Exception as e:
+        raise ValueError(f"Error while with group category {group_name}: {e}")
 
 def add_popularity_score(df: pl.DataFrame) -> pl.DataFrame:
     """
-    Add a popularity score column to a games DataFrame based on ownership, wishlists, ratings count,
+    Add a popularity score column to the games DataFrame based on ownership, wishlists, ratings count,
     and average rating. The score is normalized between 0 and 1.
 
     Args:
@@ -133,7 +111,9 @@ def add_popularity_score(df: pl.DataFrame) -> pl.DataFrame:
             (pl.col("avg_rating") / 10 * POPULARITY_WEIGHTS["avg_rating"])
         ).alias("popularity_score")
 
-        return df.with_columns(popularity_col)
+        df = df.with_columns(popularity_col)
+
+        return df
     except Exception as e:
         raise ValueError(f"Error adding popularity score: {e}")
     
@@ -167,20 +147,16 @@ def encode_column(df: pl.DataFrame, column_name: str, mapping_dict: Dict[str, in
         └──────────┴─────────────┘
     """
     try:
-        # Filter out rows where the column is null
         df_filtered = df.filter(pl.col(column_name).is_not_null())
-        
-        # Check if all values in mapping are integers
-        all_integers = all(isinstance(v, int) for v in mapping_dict.values())
-        
-        # Apply mapping
         encoded_col = pl.col(column_name).replace(mapping_dict)
         
-        # Only cast to Int32 if all mapped values are integers
+        all_integers = all(isinstance(v, int) for v in mapping_dict.values())
         if all_integers:
             encoded_col = encoded_col.cast(pl.Int32)
-            
-        return df_filtered.with_columns(encoded_col.alias(f"{column_name}_encoded"))
+        
+        df = df_filtered.with_columns(encoded_col.alias(f"{column_name}_encoded"))
+
+        return df
     except Exception as e:
         raise ValueError(f"Error encoding column '{column_name}': {e}")
 
@@ -232,7 +208,9 @@ def clean_text_column(df: pl.DataFrame, column: str) -> pl.DataFrame:
             .alias(column)
         )
 
-        return df.with_columns(cleaned_col)
+        df = df.with_columns(cleaned_col)
+
+        return df
     except Exception as e:
         raise ValueError(f"Error cleaning {column}: {e}")
 
@@ -251,16 +229,12 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
         pl.DataFrame: Original DataFrame with additional binary columns for one-hot encoding.
     """
     try:
-
-        # Get all unique non-null values across specified columns
         all_unique_values = set()
         for column in columns:
-            # Check if the column contains lists
             sample_value = df.select(pl.col(column)).row(0)[0]
             is_list_column = isinstance(sample_value, list)
-
+            
             if is_list_column:
-                # For list columns, explode and get unique values
                 unique_values = (
                     df.select(pl.col(column))
                     .filter(pl.col(column).is_not_null())
@@ -270,7 +244,6 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
                     .to_list()
                 )
             else:
-                # For single value columns, get unique values
                 unique_values = (
                     df.select(pl.col(column))
                     .filter(pl.col(column).is_not_null())
@@ -278,12 +251,9 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
                     .to_series()
                     .to_list()
                 )
+
             all_unique_values.update(unique_values)
 
-        # Start with a copy of the filtered dataframe
-        result_df = df.clone()
-
-        # Create binary columns for each unique value
         for value in all_unique_values:
             binary_exprs = []
             for col in columns:
@@ -291,7 +261,6 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
                 is_list_column = isinstance(sample_value, list)
 
                 if is_list_column:
-                    # For list columns, check if value is in the list
                     binary_exprs.append(
                         pl.col(col).map_elements(
                             lambda x: 1 if (x is not None and value in x) else 0,
@@ -299,18 +268,16 @@ def one_hot_encode(df: pl.DataFrame, columns: List[str], prefix: str = None) -> 
                         )
                     )
                 else:
-                    # For single value columns, check equality
                     binary_exprs.append(
                         (pl.col(col).fill_null(pl.lit("__NULL__")) == value).cast(pl.UInt8)
                     )
             
-            # Combine expressions with maximum (equivalent to OR for binary values)
             column_name = f"{prefix}_{str(value).lower()}" if prefix else f"{str(value).lower()}"
-            result_df = result_df.with_columns(
+            df = df.with_columns(
                 pl.max_horizontal(binary_exprs).alias(column_name)
             )
 
-        return result_df
+        return df
     except Exception as e:
         raise ValueError(f"Error performing one-hot encoding: {str(e)}")
 
@@ -387,7 +354,6 @@ def normalize_playing_time(df: pl.DataFrame) -> pl.DataFrame:
         └──────────────┴────────────────────────┘
     """
     try:
-        # Categorize playing time
         playing_time_group_col = (
             pl.when(pl.col("playing_time") <= 30).then(pl.lit("Short"))
             .when((pl.col("playing_time") > 30) & (pl.col("playing_time") <= 60)).then(pl.lit("Medium"))
@@ -397,16 +363,15 @@ def normalize_playing_time(df: pl.DataFrame) -> pl.DataFrame:
             .alias("playing_time_group")
         )
 
-        # Add the categorized column to the DataFrame
         df_with_group = df.with_columns(playing_time_group_col)
-
-        # Filter out rows with "Unknown" playing time
         df_filtered = df_with_group.filter(pl.col("playing_time_group") != "Unknown")
 
         return df_filtered
     except Exception as e:
         raise ValueError(f"Error categorizing playing time: {e}")
 
+# I'm not normalized and then one-hot encoding the same way as the I'm doing on other columns because a 
+# game can fill into multiple categories regarding player count.
 def normalize_player_count(df: pl.DataFrame) -> pl.DataFrame:
     """
     Add binary flags for different player count categories based on min_players and max_players columns.
@@ -438,7 +403,6 @@ def normalize_player_count(df: pl.DataFrame) -> pl.DataFrame:
     """
 
     try:
-        # Create binary feature columns
         df = df.with_columns([
             (pl.col("min_players") <= 1).cast(pl.UInt8).alias("GROUP_SIZE_solo"),
             ((pl.col("min_players") <= 2) & (pl.col("max_players") >= 2)).cast(pl.UInt8).alias("GROUP_SIZE_couple"),
@@ -452,7 +416,7 @@ def normalize_player_count(df: pl.DataFrame) -> pl.DataFrame:
 
 def normalize_game_difficulty(df: pl.DataFrame) -> pl.DataFrame:
     """
-    Categorize the playing time into buckets based on the duration and exclude rows with "Unknown" playing time.
+    Categorize the game difficulty into buckets based on the "avg_weight" and exclude rows with "Unknown" playing time.
 
     Args:
         df (pl.DataFrame): Input DataFrame.
@@ -461,36 +425,32 @@ def normalize_game_difficulty(df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Updated DataFrame with categorized playing time, excluding "Unknown" rows.
 
     Example:
-        >>> df = pl.DataFrame({"playing_time": [15, 45, 75, 140, None, 2000]})
-        >>> normalize_playing_time(df)
+        >>> df = pl.DataFrame({"avg_weight": [1, 2, 3, 4]})
+        >>> normalize_game_difficulty(df)
         shape: (4, 2)
         ┌──────────────┬────────────────────────┐
-        │ playing_time ┆ playing_time_group_col │
+        │ avg_weight   ┆ game_difficulty_group  │
         │ ---          ┆ ---                    │
         │ i64          ┆ str                    │
         ╞══════════════╪════════════════════════╡
-        │ 15           ┆ Short                  │
-        │ 45           ┆ Medium                 │
-        │ 75           ┆ Long                   │
-        │ 140          ┆ Very_Long              │
+        │ 1            ┆ Easy                   │
+        │ 2            ┆ Medium                 │
+        │ 3            ┆ Hard                   │
+        │ 4            ┆ Very_Hard              │
         └──────────────┴────────────────────────┘
     """
     try:
-        # Categorize playing time
         game_difficulty_col = (
             pl.when(pl.col("avg_weight") <= 1).then(pl.lit("Very Easy"))
             .when((pl.col("avg_weight") > 1) & (pl.col("avg_weight") <= 2)).then(pl.lit("Easy"))
             .when((pl.col("avg_weight") > 2) & (pl.col("avg_weight") <= 3)).then(pl.lit("Medium"))
             .when((pl.col("avg_weight") > 3) & (pl.col("avg_weight") <= 4)).then(pl.lit("Hard"))
-            .when((pl.col("avg_weight") > 4) & (pl.col("avg_weight") <= 5)).then(pl.lit("Very Hard"))
+            .when((pl.col("avg_weight") > 4) & (pl.col("avg_weight") <= 5)).then(pl.lit("Very_Hard"))
             .otherwise(pl.lit("Unknown"))
             .alias("game_difficulty_group")
         )
 
-        # Add the categorized column to the DataFrame
         df_with_group = df.with_columns(game_difficulty_col)
-
-        # Filter out rows with "Unknown" playing time
         df_filtered = df_with_group.filter(pl.col("game_difficulty_group") != "Unknown")
 
         return df_filtered
@@ -508,33 +468,22 @@ def run_data_preparation(df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Processed DataFrame.
     """
     try:
-        # df = df.drop(UNNECESSARY_COLUMNS)
-        df = (df.filter(pl.col("num_rates") >= MIN_RATINGS)
+        df = (df.filter(pl.col("num_rates") >= MIN_NR_RATINGS)
                 .filter(pl.col("avg_rating") >= MIN_RATING))
         df = clean_text_column(df, "description")
         df = add_popularity_score(df)
-        # df = one_hot_encode(df, ['subcategory_1', 'subcategory_2'])
         df = normalize_play_age(df)
         df = one_hot_encode(df, ['age_group'], 'AGE_GROUP')
-        # df = encode_column(df, "age_group", AGE_MAPPING)
         df = normalize_playing_time(df)
         df = one_hot_encode(df, ['playing_time_group'], 'GAME_DURATION')
-        # df = encode_column(df, "playing_time_group", PLAYING_TIME_MAPPING)
         df = normalize_game_difficulty(df)
         df = one_hot_encode(df, ['game_difficulty_group'], 'GAME_DIFFICULTY')
         df = normalize_player_count(df)
-        # df = df.filter(pl.col("categories").list.len() > 0)
         df = one_hot_encode(df, ['categories'], 'GAME_CAT')
         df = group_categories(df)
-        # df = df.filter(pl.col("language_dependence_description").is_not_null())
         df = encode_column(df, 'language_dependence_description', LANGUAGE_DEPENDENCY_MAPPING)
         df = one_hot_encode(df, ['language_dependence_description_encoded'], 'LANGUAGE_DEPENDENCY')
 
         return df
     except Exception as e:
         raise ValueError(f"Error running data preparation: {e}")
-    
-
-
-# AGE_MAPPING: Dict[str, int] = {"Unknown": 0, "Kids": 1, "Family": 2, "Teen": 3, "Adult": 4}
-# PLAYING_TIME_MAPPING: Dict[str, int] = {"Unknown": 0, "Short": 1, "Medium": 2, "Long": 3, "Very Long": 4}

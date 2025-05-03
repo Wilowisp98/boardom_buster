@@ -2,3 +2,5 @@
 from .binning_input_games import *
 from .cluster_games import *
 from .recommend_games import *
+from .utils import *
+from .configs import *
