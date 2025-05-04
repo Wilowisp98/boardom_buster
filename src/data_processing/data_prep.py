@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import html
 import os
 import re
@@ -374,7 +375,7 @@ def normalize_playing_time(df: pl.DataFrame) -> pl.DataFrame:
     except Exception as e:
         raise ValueError(f"Error categorizing playing time: {e}")
 
-# I'm not normalized and then one-hot encoding the same way as the I'm doing on other columns because a 
+# I'm not normalizing and then one-hot encoding the same way as the I'm doing on other columns because a 
 # game can fill into multiple categories regarding player count.
 def normalize_player_count(df: pl.DataFrame) -> pl.DataFrame:
     """

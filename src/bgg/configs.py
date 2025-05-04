@@ -1,4 +1,17 @@
+# -*- coding: utf-8 -*-
+import os
+
 import polars as pl
+
+BASE_DIR: str = os.path.dirname(os.path.abspath(__file__))
+BASE_URL: str = "https://boardgamegeek.com/xmlapi2"
+CONTROL_FILE: str = os.path.join(BASE_DIR, "bgg_control.json")
+DATA_DIR: str = os.path.join(BASE_DIR, "data")
+BASE_FILENAME: str = "raw_bgg_data"
+MAX_CHUNK_SIZE = 10
+MAX_RETRIES = 3
+RETRY_DELAY = 5
+MAX_CONSECUTIVE_FAILURES = 50
 
 SCHEMA = pl.Schema({
     "game_name": pl.Utf8,

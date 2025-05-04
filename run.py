@@ -2,6 +2,7 @@
 import os
 import asyncio
 from datetime import datetime
+from typing import Dict
 
 import polars as pl
 from flask import Flask, render_template, request, jsonify
@@ -41,55 +42,66 @@ def get_latest_file(directory: str) -> str:
             raise ValueError(f"No valid dated files found in {directory}")
             
         latest_file = sorted(dated_files, reverse=True)[0][1]
+
         return os.path.join(directory, latest_file)
-        
     except Exception as e:
         raise ValueError(f"Error getting latest file: {e}")
 
-def is_file_older_than_days(file_path: str, days: int) -> bool:
+def is_file_older_than_days(file_path: str, days: int = 7) -> bool:
     try:
         file_date_str = os.path.basename(file_path).split('_')[-1].split('.')[0]
         file_date = datetime.strptime(file_date_str, '%Y%m%d')
         days_old = (datetime.now() - file_date).days
+
         return days_old > days
     except Exception as e:
         print(f"Error checking file age: {e}")
         return False
 
-def initialize_data():
-    create_model = False
+def initialize_data(create_model: bool = False) -> tuple[pl.DataFrame, Dict]:
+    latest_bgg_file = get_latest_file(BGG_PATH)
+    if is_file_older_than_days(latest_bgg_file):
+        if input("The current data is older than 7 days, do you want to process new one? (y/n): ").lower() == 'y':
+            create_model = True
+
     if is_data_folder_empty(step='bgg'):
-        answer = input("BGG data folder is empty. Would you like to import data via BGG API and process it? (y/n): ")
-        if answer.lower() == 'y':
+        if input("BGG data folder is empty. Would you like to import data via BGG API and process it? (y/n): ").lower() == 'y':
             create_model = True
             bgg_df = asyncio.run(main_bgg(force_restart=True))
             games_data = run_data_preparation(bgg_df)
-    if is_data_folder_empty(step='prep'):
+                
+    elif is_data_folder_empty(step='prep'):
         answer = input("Processed data folder is empty. Would you like to: \n 1. Reprocess everything from the start (BGG > Data Prep). \n 2. Reprocess last fetched data from BGG? (1/2): ")
-        if answer == '1': 
-            create_model = True
+        if answer == '1':
             bgg_df = asyncio.run(main_bgg(force_restart=True))
-            games_data = run_data_preparation(bgg_df)
-        elif answer == '2':
-            create_model = True
-            last_file_path = get_latest_file(BGG_PATH)
-            bgg_df = pl.read_parquet(last_file_path)
             print('Processing BGG data...')
             games_data = run_data_preparation(bgg_df)
-    if not create_model and is_data_folder_empty(step='model'):
-        answer = input("There is no model saved. Do you want to create a new one? (y/n): ")
-        if answer.lower() == 'y':
             create_model = True
-            last_file_path = get_latest_file(PREP_PATH)
-            games_data = pl.read_parquet(last_file_path)
+        elif answer == '2':
+            bgg_df = pl.read_parquet(get_latest_file(BGG_PATH))
+            print('Processing BGG data...')
+            games_data = run_data_preparation(bgg_df)
+            create_model = True
+            
+    elif is_data_folder_empty(step='model'):
+        if not create_model and input("There is no model saved. Do you want to create a new one? (y/n): ").lower() == 'y':
+            create_model = True
+            games_data = pl.read_parquet(get_latest_file(PREP_PATH))
+            
     if create_model:
-        model = bgClusters()
-        clusters = model.fit(games_data, constraint_columns=CONSTRAINT_COLUMNS, name_column=NAME_COLUMN, restart_model=create_model).clusters
+        if not 'games_data' in locals():
+            bgg_df = asyncio.run(main_bgg(force_restart=True))
+            games_data = run_data_preparation(bgg_df)
     else:
-        last_file_path = get_latest_file(PREP_PATH)
-        games_data = pl.read_parquet(last_file_path)
-        model = bgClusters()
-        clusters = model.fit(games_data, constraint_columns=CONSTRAINT_COLUMNS, name_column=NAME_COLUMN).clusters
+        games_data = pl.read_parquet(get_latest_file(PREP_PATH))
+
+    model = bgClusters()
+    clusters = model.fit(
+        games_data,
+        constraint_columns=CONSTRAINT_COLUMNS,
+        name_column=NAME_COLUMN,
+        restart_model=create_model
+    ).clusters
 
     return games_data, clusters
 
@@ -97,14 +109,7 @@ if not os.path.exists(FEEDBACK_DIR):
     os.makedirs(FEEDBACK_DIR)
 
 if not os.path.exists(FEEDBACK_FILE):
-    pl.DataFrame({
-        'timestamp': [],
-        'input_game': [],
-        'recommended_game': [],
-        'feedback': [],
-        'reason': [],
-        'comment': []
-    }).write_csv(FEEDBACK_FILE)
+    pl.DataFrame(FEEDBACK_STRUCTURE).write_csv(FEEDBACK_FILE)
 
 # Flask routes
 @app.route('/')
@@ -134,6 +139,7 @@ def recommend():
                 "name": game,
                 "explanation": explanation
             })
+
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)})
@@ -164,8 +170,8 @@ def save_feedback():
             combined_df = new_feedback_df
         
         combined_df.write_csv(FEEDBACK_FILE)
+
         return jsonify({"status": "success", "message": "Feedback saved successfully"})
-        
     except Exception as e:
         print(f"Error saving feedback: {str(e)}")
         return jsonify({

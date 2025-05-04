@@ -1,7 +1,10 @@
-import polars as pl
-import numpy as np
-from typing import List, Dict, Any, Optional
+# -*- coding: utf-8 -*-
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import polars as pl
+
 from .configs import *
 from .utils import *
 

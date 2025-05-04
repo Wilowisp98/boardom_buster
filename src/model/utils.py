@@ -1,5 +1,8 @@
-import polars as pl
+# -*- coding: utf-8 -*-
 from typing import List, TypeVar
+
+import polars as pl
+
 
 Number = TypeVar('Number', int, float)
 

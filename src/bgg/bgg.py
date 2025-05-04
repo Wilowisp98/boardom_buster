@@ -1,40 +1,24 @@
+# -*- coding: utf-8 -*-
 import os
 import json
 import time
 import asyncio
+from datetime import datetime
+from typing import List, Optional, Tuple
+
 import httpx
 import xmltodict
 import polars as pl
-from datetime import datetime
-from typing import List, Optional, Tuple
-from .logger import get_logger
-from .schema import SCHEMA
 
-class BGGConfig:
-    """
-    BGGClient Configuration class.
-    """
-    def __init__(self, base_url: str = "https://boardgamegeek.com/xmlapi2"):
-        self.base_url = base_url
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.control_file = os.path.join(self.base_dir, "bgg_control.json")
-        self.data_dir = os.path.join(self.base_dir, "data")
-        self.base_filename = "raw_bgg_data"
-        self.max_chunk_size = 10
-        self.max_retries = 3
-        self.retry_delay = 5
-        self.max_consecutive_failures = 50
+from .logger import get_logger
+from .configs import *
 
 class BGG:
     """
     Class for interacting with the BoardGameGeek (BGG) XML API2.
-
-    Attributes:
-        config (BGGConfig): Configuration settings for the BGG client.
     """
-    def __init__(self, config) -> None:
-        self.config = config
-        self.logger = get_logger('BGGLogger', base_dir=self.config.base_dir)
+    def __init__(self) -> None:
+        self.logger = get_logger('BGGLogger', base_dir=BASE_DIR)
         self.control_data = self._load_control_data()
         self.global_df = None
         self.current_date = int(datetime.now().strftime('%Y%m%d'))
@@ -48,8 +32,8 @@ class BGG:
                 - first_execution (bool): True if this is the first time running (no existing file)
                 - last_id (int): The ID of the last processed item, defaults to 1 for new executions
         """
-        if os.path.exists(self.config.control_file):
-            with open(self.config.control_file, 'r') as f:
+        if os.path.exists(CONTROL_FILE):
+            with open(CONTROL_FILE, 'r') as f:
                 data = json.load(f)
                 self.logger.info(f"Loaded control data: last_id={data.get('last_id')}")
                 return data
@@ -65,7 +49,7 @@ class BGG:
             IOError: If there are issues writing to the control file
             TypeError: If self.control_data contains values that cannot be serialized to JSON
         """
-        with open(self.config.control_file, 'w') as f:
+        with open(CONTROL_FILE, 'w') as f:
             json.dump(self.control_data, f)
 
     async def get_games_data(self, game_ids: List[int]) -> List[pl.DataFrame]:
@@ -78,7 +62,7 @@ class BGG:
         Returns:
             List[pl.DataFrame]: List of DataFrames containing the processed game data.
         """
-        endpoint = f"{self.config.base_url}/thing"
+        endpoint = f"{BASE_URL}/thing"
         params = {
             "id": ",".join(map(str, game_ids)),
             "type": "boardgame",
@@ -86,7 +70,7 @@ class BGG:
         }
 
         async with httpx.AsyncClient() as client:
-            for attempt in range(self.config.max_retries):
+            for attempt in range(MAX_RETRIES):
                 try:
                     response = await client.get(endpoint, params=params)
 
@@ -106,8 +90,8 @@ class BGG:
                         return [self._prepare_data({'items': {'item': item}}) for item in items if item]
 
                     elif response.status_code == 429:
-                        self.logger.info(f"Request queued for game IDs {game_ids[0]} to {game_ids[-1]}, attempt {attempt + 1}/{self.config.max_retries}")
-                        await asyncio.sleep(self.config.retry_delay * (self.config.max_retries - attempt))
+                        self.logger.info(f"Request queued for game IDs {game_ids[0]} to {game_ids[-1]}, attempt {attempt + 1}/{MAX_RETRIES}")
+                        await asyncio.sleep(RETRY_DELAY * (MAX_RETRIES - attempt))
                     else:
                         self.logger.error(f"HTTP {response.status_code} for game IDs {game_ids[0]} to {game_ids[-1]}")
                         response.raise_for_status()
@@ -116,10 +100,10 @@ class BGG:
                     self.logger.error(f"HTTP error retrieving game IDs {game_ids[0]} to {game_ids[-1]}: {str(e)}", exc_info=True)
                 except Exception as e:
                     self.logger.error(f"Error retrieving game IDs {game_ids[0]} to {game_ids[-1]}: {str(e)}", exc_info=True)
-                    if attempt == self.config.max_retries - 1:
+                    if attempt == MAX_RETRIES - 1:
                         raise
 
-        raise Exception(f"Failed to get response for game IDs {game_ids[0]} to {game_ids[-1]} after {self.config.max_retries} attempts")
+        raise Exception(f"Failed to get response for game IDs {game_ids[0]} to {game_ids[-1]} after {MAX_RETRIES} attempts")
 
     def _prepare_data(self, response_data: dict) -> pl.DataFrame:
         """
@@ -137,17 +121,14 @@ class BGG:
         try:
             game_info = response_data['items']['item']
 
-            # Extract basic game information
             game_name = game_info['name'][0]['@value'] if isinstance(game_info['name'], list) else game_info['name']['@value']
             game_description = game_info['description']
             game_publication_year = int(game_info['yearpublished']['@value'])
             game_min_players = int(game_info['minplayers']['@value'])
             game_max_players = int(game_info['maxplayers']['@value'])
 
-            # Extract poll data
             best_numplayers, recommended_numplayers, suggested_playerage, language_dependence = self._extract_poll_data(game_info)
 
-            # Extract categories, mechanics, families, designers, artists, and publishers
             game_categories = self._extract_links(game_info, 'boardgamecategory')
             game_mechanics = self._extract_links(game_info, 'boardgamemechanic')
             game_families = self._extract_links(game_info, 'boardgamefamily')
@@ -155,21 +136,17 @@ class BGG:
             game_artists = self._extract_links(game_info, 'boardgameartist')
             game_publishers = self._extract_links(game_info, 'boardgamepublisher')
 
-            # Extract playing time and age information
             game_playing_time = int(game_info['playingtime']['@value'])
             game_min_playtime = int(game_info['minplaytime']['@value'])
             game_max_playtime = int(game_info['maxplaytime']['@value'])
             game_min_age = int(game_info['minage']['@value'])
 
-            # Inside _prepare_data method
             game_stats = game_info['statistics']
             ratings = game_stats['ratings']
 
-            # Basic stats
             num_rates = int(ratings['usersrated']['@value'])
             avg_rating = float(ratings['average']['@value'])
 
-            # Extract ranks and categories
             game_rank = None
             game_subcategories = []
             for rank in ratings.get('ranks', {}).get('rank', []):
@@ -187,13 +164,11 @@ class BGG:
             subcategory_2 = game_subcategories[1]['name'] if len(game_subcategories) > 1 else None
             rank_subcategory_2 = game_subcategories[1]['rank'] if len(game_subcategories) > 1 else None
 
-            # Additional stats with type conversion
             num_weights = int(ratings['numweights']['@value'])
             avg_weight = float(ratings['averageweight']['@value'])
             owned_by = int(ratings['owned']['@value'])
             wished_by = int(ratings['wishing']['@value'])
 
-            # Create DataFrame
             df = pl.DataFrame({
                 "game_name": [game_name],
                 "description": [game_description],
@@ -229,7 +204,6 @@ class BGG:
             )
 
             return df
-
         except KeyError as e:
             raise Exception(f"Failed to process game data: {str(e)}")
         except Exception as e:
@@ -322,13 +296,13 @@ class BGG:
 
         self.logger.info(f"Starting continuous scan from ID {start_id}")
 
-        # while consecutive_failures < self.config.max_consecutive_failures:
+        # while consecutive_failures < MAX_CONSECUTIVE_FAILURES:
         while current_id <= 1000:
             try:
                 batch_ids = list(range(current_id, current_id + batch_size))
                 self.logger.info(f"Processing batch: IDs {current_id} to {current_id + batch_size - 1}")
 
-                chunks_ids = [batch_ids[i:i+self.config.max_chunk_size] for i in range(0, len(batch_ids), self.config.max_chunk_size)]
+                chunks_ids = [batch_ids[i:i+MAX_CHUNK_SIZE] for i in range(0, len(batch_ids), MAX_CHUNK_SIZE)]
                 tasks = [self.get_games_data(chunk_ids) for chunk_ids in chunks_ids]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -384,43 +358,34 @@ async def main_bgg(force_restart: bool = False):
         - Otherwise, loads the most recent file and appends new data
     """
     start_time = time.time()
-
-    config = BGGConfig()
-    client = BGG(config)
+    client = BGG()
     client.logger.info("Starting BGG data collection process")
 
-    os.makedirs(config.data_dir, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
 
-    existing_files = [f for f in os.listdir(config.data_dir) if f.startswith(config.base_filename) and f.endswith('.parquet')]
+    existing_files = [f for f in os.listdir(DATA_DIR) if f.startswith(BASE_FILENAME) and f.endswith('.parquet')]
 
     try:
         if force_restart:
             client.logger.info("Force restart requested - starting fresh data collection")
             df, df_size = await client.continuous_scan(force_restart=True)
-            output_file = os.path.join(config.data_dir, f"{config.base_filename}_{client.current_date}.parquet")
+            output_file = os.path.join(DATA_DIR, f"{BASE_FILENAME}_{client.current_date}.parquet")
             df.write_parquet(output_file)
             client.logger.info(f"Wrote updated data file: {os.path.basename(output_file)}")
         else:
-            if not existing_files:
-                client.logger.info("No existing data files found - starting fresh collection")
-                df, df_size = await client.continuous_scan(force_restart=False)
-                output_file = os.path.join(config.data_dir, f"{config.base_filename}_{client.current_date}.parquet")
-                df.write_parquet(output_file)
-                client.logger.info(f"Wrote updated data file: {os.path.basename(output_file)}")
-            else:
-                latest_file = max(existing_files, key=lambda x: int(x.split('_')[3].split('.')[0]))
-                latest_file_path = os.path.join(config.data_dir, latest_file)
-                client.logger.info(f"Loading existing data from {latest_file}")
-                existing_df = pl.read_parquet(latest_file_path)
-                client.logger.info(f"Existing data contains {existing_df.height} games")
+            latest_file = max(existing_files, key=lambda x: int(x.split('_')[3].split('.')[0]))
+            latest_file_path = os.path.join(DATA_DIR, latest_file)
+            client.logger.info(f"Loading existing data from {latest_file}")
+            existing_df = pl.read_parquet(latest_file_path)
+            client.logger.info(f"Existing data contains {existing_df.height} games")
 
-                client.logger.info("Starting collection of new data")
-                new_df, df_size = await client.continuous_scan(force_restart=False)
-                df = pl.concat([existing_df, new_df])
+            client.logger.info("Starting collection of new data")
+            new_df, df_size = await client.continuous_scan(force_restart=False)
+            df = pl.concat([existing_df, new_df])
 
-                output_file = os.path.join(config.data_dir, f"{config.base_filename}_{client.current_date}.parquet")
-                df.write_parquet(output_file)
-                client.logger.info(f"Wrote updated data file: {os.path.basename(output_file)}")
+            output_file = os.path.join(DATA_DIR, f"{BASE_FILENAME}_{client.current_date}.parquet")
+            df.write_parquet(output_file)
+            client.logger.info(f"Wrote updated data file: {os.path.basename(output_file)}")
 
         execution_time = time.time() - start_time
         client.logger.info(f"Found {df_size} new boardgames")
@@ -428,7 +393,6 @@ async def main_bgg(force_restart: bool = False):
         client.logger.info(f"Total execution time: {execution_time / 60:.2f} minutes")
 
         return df
-
     except Exception as _:
         client.logger.error("Critical error in main execution", exc_info=True)
         raise
