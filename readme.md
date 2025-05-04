@@ -1,4 +1,4 @@
-# Boardom Buster
+# boardom_buster
 
 A board game recommendation system powered by BoardGameGeek data and machine learning.
 
