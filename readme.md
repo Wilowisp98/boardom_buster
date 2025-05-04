@@ -31,7 +31,40 @@ Blog post about it: https://wilowsballoc.bearblog.dev/boardom-buster-my-boardgam
 
 ## Project Structure
 
-*Coming soon*
+```
+boardom_buster/
+├── run.py                          # Main application entry point, contains Flask server setup
+├── feedback/                       # Directory for storing user feedback data
+│   └── user_feedback.csv           # CSV file containing user interaction feedback
+└── src/                            # Source code directory
+    ├── __init__.py                 # Python package initialization
+    ├── bgg/                        # BoardGameGeek API interaction module
+    │   ├── __init__.py             # Package initialization
+    │   ├── bgg_control.json        # API control
+    │   ├── bgg.py                  # BGG API interaction implementation
+    │   ├── configs.py              # BGG module specific configurations
+    │   ├── logger.py               # Logging functionality for BGG operations
+    │   ├── data/                   # Storage for BGG raw data
+    ├── data_processing/            # Data preprocessing module
+    │   ├── __init__.py             # Package initialization
+    │   ├── configs.py              # Data processing configurations
+    │   ├── data_prep.py            # Data preparation and cleaning scripts
+    │   └── processed_data/         # Storage for processed dataset files
+    ├── model/                      # Machine learning model module
+    │   ├── __init__.py             # Package initialization
+    │   ├── binning_input_games.py  # (Unused) Game categorization logic
+    │   ├── cluster_games.py        # Game clustering implementation
+    │   ├── configs.py              # Model specific configurations
+    │   ├── recommend_games.py      # Game recommendation engine
+    │   ├── utils.py                # Utility functions for the model
+    │   └── clustering_results/     # Storage for model outputs
+    │       └── cluster/            # Generated cluster
+    ├── static/                     # Web application static assets
+    │   ├── script.js               # Frontend JavaScript code
+    │   └── style.css               # CSS styling
+    └── templates/                  # Web application templates
+        └── index.html              # Main webpage template
+```
 
 ## Setup and Installation
 
