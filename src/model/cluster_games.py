@@ -2,7 +2,6 @@ import os
 import time
 import pickle
 import io
-from contextlib import redirect_stdout
 
 import numpy as np
 import polars as pl
@@ -76,10 +75,10 @@ class bgClusters:
                         }
 
                     self.games_df = games_df
+                    self.name_column = name_column
+                    self.feature_columns = get_feature_columns(self.games_df, RELEVANT_COLUMNS)
                     self._add_cluster_labels()
                     self._generate_cluster_descriptions()
-                    self.feature_columns = get_feature_columns(self.games_df, RELEVANT_COLUMNS)
-                    self.name_column = name_column
                     self.constraint_columns = constraint_columns
                     return self
 
@@ -250,185 +249,178 @@ class bgClusters:
         int
             Optimal number of clusters
         """
-        captured_output = io.StringIO()
+        data_size = len(data)
+        adaptive_min_k = max(2, int(np.log(data_size)))
+        adaptive_max_k = max(5, int(np.sqrt(data_size)) / 2)
+        max_k = min(self.feature_count, data_size - 1, adaptive_max_k * 2)
 
-        with redirect_stdout(captured_output):
-            data_size = len(data)
-            adaptive_min_k = max(2, int(np.log(data_size)))
-            adaptive_max_k = max(5, int(np.sqrt(data_size)) / 2)
-            max_k = min(self.feature_count, data_size - 1, adaptive_max_k * 2)
+        k_range = range(2, int(max_k * 2))
+        silhouette_scores = []
+        cluster_size_scores = []
+        for k in k_range:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(data)
 
-            k_range = range(2, int(max_k * 2))
-            silhouette_scores = []
-            cluster_size_scores = []
-            for k in k_range:
-                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-                labels = kmeans.fit_predict(data)
+            if data_size > k:
+                sil_score = silhouette_score(data, labels)
+                silhouette_scores.append(sil_score)
+            else:
+                silhouette_scores.append(0)
 
-                if data_size > k:
-                    sil_score = silhouette_score(data, labels)
-                    silhouette_scores.append(sil_score)
-                else:
-                    silhouette_scores.append(0)
+            if adaptive_min_k <= k <= max_k:
+                cluster_size_scores.append(1.0)
+            else:
+                distance = min(abs(k - adaptive_min_k), abs(k - max_k))
+                max_reasonable = int(np.sqrt(data_size) / 2)
+                score = max(0, 1.0 - (distance / max(1, max_reasonable)))
+                cluster_size_scores.append(score)
 
-                if adaptive_min_k <= k <= max_k:
-                    cluster_size_scores.append(1.0)
-                else:
-                    distance = min(abs(k - adaptive_min_k), abs(k - max_k))
-                    max_reasonable = int(np.sqrt(data_size) / 2)
-                    score = max(0, 1.0 - (distance / max(1, max_reasonable)))
-                    cluster_size_scores.append(score)
+        norm_silhouette = normalize(silhouette_scores, higher_is_better=True)
+        norm_cluster_size = cluster_size_scores
 
-            norm_silhouette = normalize(silhouette_scores, higher_is_better=True)
-            norm_cluster_size = cluster_size_scores
+        complexity_penalty = []
+        penalty_weight = 0.2
+        max_k_value = max(k_range)
+        for k in k_range:
+            penalty = penalty_weight * (k / max_k_value)**2
+            complexity_penalty.append(penalty)
 
-            complexity_penalty = []
-            penalty_weight = 0.2
-            max_k_value = max(k_range)
-            for k in k_range:
-                penalty = penalty_weight * (k / max_k_value)**2
-                complexity_penalty.append(penalty)
+        weights = {
+            'silhouette': 0.65,
+            'cluster_size': 0.35 
+        }
 
-            weights = {
-                'silhouette': 0.65,
-                'cluster_size': 0.35 
-            }
+        final_scores = []
+        final_scores_with_penalty = []
+        for i in range(len(k_range)):
+            score = (
+                weights['silhouette'] * norm_silhouette[i] +
+                weights['cluster_size'] * norm_cluster_size[i]
+            )
+            final_scores.append(score)
+            penalized_score = score - complexity_penalty[i]
+            final_scores_with_penalty.append(penalized_score)
 
-            final_scores = []
-            final_scores_with_penalty = []
+        best_idx = np.argmax(final_scores_with_penalty)
+        optimal_k = k_range[best_idx]
+
+        if plot:
+            # VISUALIZATION 0: Optimization process
+            fig, axes = plt.subplots(2, 1, figsize=(12, 10), gridspec_kw={'height_ratios': [1, 1]})
+
+            # Top plot: Detailed progression of each k evaluation
+            ax = axes[0]
+            x = np.arange(len(k_range))
+            width = 0.3
+            offsets = [-0.5, 0.5]
+
+            # Plot bars for each metric side by side
+            ax.bar(x + offsets[0]*width, norm_silhouette, width, label='Silhouette', color='blue', alpha=0.7)
+            ax.bar(x + offsets[1]*width, norm_cluster_size, width, label='Cluster Size', color='orange', alpha=0.7)
+
+            # Add line showing weighted total with and without penalty
+            ax.plot(x, final_scores, 'ko-', linewidth=2, label='Original Score')
+            ax.plot(x, final_scores_with_penalty, 'ro-', linewidth=2, label='Score with Penalty')
+
+            # Add complexity penalty visualization
+            ax.plot(x, complexity_penalty, 'g--', linewidth=1.5, label='Complexity Penalty')
+
+            # Highlight the best k
+            best_k_idx = list(k_range).index(optimal_k)
+            ax.axvline(x=best_k_idx, color='black', linestyle='--')
+            ax.text(best_k_idx, max(final_scores)+0.05, f'Optimal k={optimal_k}', 
+                    ha='center', va='bottom', fontweight='bold')
+
+            ax.set_xticks(x)
+            ax.set_xticklabels(k_range)
+            ax.set_xlabel('Number of Clusters (k)')
+            ax.set_ylabel('Normalized Score')
+            ax.set_title('Detailed View of Each Metric by Cluster Count')
+            ax.grid(True, linestyle='--', alpha=0.5)
+            ax.legend(loc='upper left')
+
+            # Bottom plot: Progression of metrics across k values
+            ax = axes[1]
+            metrics = [
+                ('Silhouette', norm_silhouette, 'blue', 'o-'), 
+                ('Cluster Size', norm_cluster_size, 'orange', 'p-'),
+                ('Original Score', final_scores, 'black', '*-'),
+                ('Score with Penalty', final_scores_with_penalty, 'red', 'x-'),
+                ('Complexity Penalty', complexity_penalty, 'green', '--')
+            ]
+
+            for name, values, color, style in metrics:
+                ax.plot(k_range, values, style, label=name, color=color)
+
+            ax.axvline(x=optimal_k, color='black', linestyle='--')
+            ax.set_xlabel('Number of Clusters (k)')
+            ax.set_ylabel('Score')
+            ax.set_title('Progression of Evaluation Metrics Across k Values')
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.legend(loc='upper right')
+
+            plt.tight_layout()
+            # Save to file
+            fig.savefig(f'model/clustering_results/optimization_process_{constraint_name}.png', dpi=300, bbox_inches='tight')
+            plt.close(fig)
+
+            # VISUALIZATION 1: Individual metrics (original)
+            fig = plt.figure(figsize=(12, 6))
+            plt.plot(k_range, norm_silhouette, 'o-', label='Silhouette Score (normalized)', color='blue')
+            plt.plot(k_range, norm_cluster_size, 'p-', label='Cluster Size Score', color='orange')
+            plt.plot(k_range, complexity_penalty, '--', label='Complexity Penalty', color='green')
+            plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
+            plt.xlabel('Number of Clusters (k)')
+            plt.ylabel('Normalized Score')
+            plt.title('Individual Evaluation Metrics for Cluster Optimization')
+            plt.grid(True, linestyle='--', alpha=0.7)
+            plt.legend()
+            plt.tight_layout()
+            # Save to file
+            fig.savefig(f'model/clustering_results/individual_metrics_{constraint_name}.png', dpi=300, bbox_inches='tight')
+            plt.close(fig)
+
+            # VISUALIZATION 2: Combined scores with iteration markers
+            fig = plt.figure(figsize=(10, 5))
+            plt.plot(k_range, final_scores, 'o-', color='blue', label='Original Score')
+            plt.plot(k_range, final_scores_with_penalty, 'o-', color='red', label='Score with Penalty')
+
+            # Add arrows showing the progression of testing
+            for i in range(len(k_range)-1):
+                plt.annotate('', 
+                    xy=(k_range[i+1], final_scores_with_penalty[i+1]),
+                    xytext=(k_range[i], final_scores_with_penalty[i]),
+                    arrowprops=dict(arrowstyle='->', color='gray', alpha=0.6, lw=1.5))
+
+            # Add iteration numbers
             for i in range(len(k_range)):
-                score = (
-                    weights['silhouette'] * norm_silhouette[i] +
-                    weights['cluster_size'] * norm_cluster_size[i]
-                )
-                final_scores.append(score)
-                penalized_score = score - complexity_penalty[i]
-                final_scores_with_penalty.append(penalized_score)
+                plt.text(k_range[i], final_scores_with_penalty[i] + 0.02, f"{i+1}", 
+                        ha='center', va='bottom', fontsize=9, color='darkblue')
 
-            best_idx = np.argmax(final_scores_with_penalty)
-            optimal_k = k_range[best_idx]
+            plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
+            plt.xlabel('Number of Clusters (k)')
+            plt.ylabel('Score')
+            plt.title('Combined Cluster Evaluation Scores with Iteration Path')
+            plt.grid(True, linestyle='--', alpha=0.7)
+            plt.legend()
+            plt.tight_layout()
+            # Save to file
+            fig.savefig(f'model/clustering_results/combined_scores_{constraint_name}.png', dpi=300, bbox_inches='tight')
+            plt.close(fig)
 
-            if plot:
-                # VISUALIZATION 0: Optimization process
-                fig, axes = plt.subplots(2, 1, figsize=(12, 10), gridspec_kw={'height_ratios': [1, 1]})
-
-                # Top plot: Detailed progression of each k evaluation
-                ax = axes[0]
-                x = np.arange(len(k_range))
-                width = 0.3
-                offsets = [-0.5, 0.5]
-
-                # Plot bars for each metric side by side
-                ax.bar(x + offsets[0]*width, norm_silhouette, width, label='Silhouette', color='blue', alpha=0.7)
-                ax.bar(x + offsets[1]*width, norm_cluster_size, width, label='Cluster Size', color='orange', alpha=0.7)
-
-                # Add line showing weighted total with and without penalty
-                ax.plot(x, final_scores, 'ko-', linewidth=2, label='Original Score')
-                ax.plot(x, final_scores_with_penalty, 'ro-', linewidth=2, label='Score with Penalty')
-
-                # Add complexity penalty visualization
-                ax.plot(x, complexity_penalty, 'g--', linewidth=1.5, label='Complexity Penalty')
-
-                # Highlight the best k
-                best_k_idx = list(k_range).index(optimal_k)
-                ax.axvline(x=best_k_idx, color='black', linestyle='--')
-                ax.text(best_k_idx, max(final_scores)+0.05, f'Optimal k={optimal_k}', 
-                        ha='center', va='bottom', fontweight='bold')
-
-                ax.set_xticks(x)
-                ax.set_xticklabels(k_range)
-                ax.set_xlabel('Number of Clusters (k)')
-                ax.set_ylabel('Normalized Score')
-                ax.set_title('Detailed View of Each Metric by Cluster Count')
-                ax.grid(True, linestyle='--', alpha=0.5)
-                ax.legend(loc='upper left')
-
-                # Bottom plot: Progression of metrics across k values
-                ax = axes[1]
-                metrics = [
-                    ('Silhouette', norm_silhouette, 'blue', 'o-'), 
-                    ('Cluster Size', norm_cluster_size, 'orange', 'p-'),
-                    ('Original Score', final_scores, 'black', '*-'),
-                    ('Score with Penalty', final_scores_with_penalty, 'red', 'x-'),
-                    ('Complexity Penalty', complexity_penalty, 'green', '--')
-                ]
-
-                for name, values, color, style in metrics:
-                    ax.plot(k_range, values, style, label=name, color=color)
-
-                ax.axvline(x=optimal_k, color='black', linestyle='--')
-                ax.set_xlabel('Number of Clusters (k)')
-                ax.set_ylabel('Score')
-                ax.set_title('Progression of Evaluation Metrics Across k Values')
-                ax.grid(True, linestyle='--', alpha=0.7)
-                ax.legend(loc='upper right')
-
-                plt.tight_layout()
-                # Save to file
-                fig.savefig(f'model/clustering_results/optimization_process_{constraint_name}.png', dpi=300, bbox_inches='tight')
-                plt.close(fig)
-
-                # VISUALIZATION 1: Individual metrics (original)
-                fig = plt.figure(figsize=(12, 6))
-                plt.plot(k_range, norm_silhouette, 'o-', label='Silhouette Score (normalized)', color='blue')
-                plt.plot(k_range, norm_cluster_size, 'p-', label='Cluster Size Score', color='orange')
-                plt.plot(k_range, complexity_penalty, '--', label='Complexity Penalty', color='green')
-                plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
-                plt.xlabel('Number of Clusters (k)')
-                plt.ylabel('Normalized Score')
-                plt.title('Individual Evaluation Metrics for Cluster Optimization')
-                plt.grid(True, linestyle='--', alpha=0.7)
-                plt.legend()
-                plt.tight_layout()
-                # Save to file
-                fig.savefig(f'model/clustering_results/individual_metrics_{constraint_name}.png', dpi=300, bbox_inches='tight')
-                plt.close(fig)
-
-                # VISUALIZATION 2: Combined scores with iteration markers
-                fig = plt.figure(figsize=(10, 5))
-                plt.plot(k_range, final_scores, 'o-', color='blue', label='Original Score')
-                plt.plot(k_range, final_scores_with_penalty, 'o-', color='red', label='Score with Penalty')
-
-                # Add arrows showing the progression of testing
-                for i in range(len(k_range)-1):
-                    plt.annotate('', 
-                        xy=(k_range[i+1], final_scores_with_penalty[i+1]),
-                        xytext=(k_range[i], final_scores_with_penalty[i]),
-                        arrowprops=dict(arrowstyle='->', color='gray', alpha=0.6, lw=1.5))
-
-                # Add iteration numbers
-                for i in range(len(k_range)):
-                    plt.text(k_range[i], final_scores_with_penalty[i] + 0.02, f"{i+1}", 
-                            ha='center', va='bottom', fontsize=9, color='darkblue')
-
-                plt.axvline(x=optimal_k, color='black', linestyle='--', label=f'Optimal k = {optimal_k}')
-                plt.xlabel('Number of Clusters (k)')
-                plt.ylabel('Score')
-                plt.title('Combined Cluster Evaluation Scores with Iteration Path')
-                plt.grid(True, linestyle='--', alpha=0.7)
-                plt.legend()
-                plt.tight_layout()
-                # Save to file
-                fig.savefig(f'model/clustering_results/combined_scores_{constraint_name}.png', dpi=300, bbox_inches='tight')
-                plt.close(fig)
-
-                # Print iterations summary
-                print("\nClustering Optimization Iterations:")
-                print("-" * 60)
-                print(f"{'k':>3} {'Silhouette':>12} {'Size':>12} {'Penalty':>12} {'Original':>12} {'Penalized':>12}")
-                print("-" * 60)
-                for i, k in enumerate(k_range):
-                    print(f"{k:3d} {norm_silhouette[i]:12.4f} "
-                          f"{norm_cluster_size[i]:12.4f} "
-                          f"{complexity_penalty[i]:12.4f} "
-                          f"{final_scores[i]:12.4f} "
-                          f"{final_scores_with_penalty[i]:12.4f}")
-                print("-" * 60)
-                print(f"Selected optimal k = {optimal_k} (data size: {data_size})\n")
-
-
-        with open(os.path.join(os.path.join(BASE_DIR, "clustering_results"), f'clustering_log_{constraint_name}.txt'), 'w') as f:
-            f.write(captured_output.getvalue())
+            # Print iterations summary
+            print("\nClustering Optimization Iterations:")
+            print("-" * 60)
+            print(f"{'k':>3} {'Silhouette':>12} {'Size':>12} {'Penalty':>12} {'Original':>12} {'Penalized':>12}")
+            print("-" * 60)
+            for i, k in enumerate(k_range):
+                print(f"{k:3d} {norm_silhouette[i]:12.4f} "
+                      f"{norm_cluster_size[i]:12.4f} "
+                      f"{complexity_penalty[i]:12.4f} "
+                      f"{final_scores[i]:12.4f} "
+                      f"{final_scores_with_penalty[i]:12.4f}")
+            print("-" * 60)
+            print(f"Selected optimal k = {optimal_k} (data size: {data_size})\n")
 
         return optimal_k
     
