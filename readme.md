@@ -1,4 +1,4 @@
-# Boardom Buster
+# Boardom Buster - IN DEVELOPMENT
 
 A board game recommendation system powered by BoardGameGeek data and machine learning.
 
