@@ -12,7 +12,8 @@ RELEVANT_COLUMNS: List[str] = [
 ]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FINAL_MODEL_DIR: str = os.path.join(BASE_DIR, "model/clustering_results/cluster")
+MODEL_DETAILS_DIR: str = os.path.join(BASE_DIR, "clustering_results")
+FINAL_MODEL_DIR: str = os.path.join(os.path.join(BASE_DIR, "clustering_results"), "cluster")
 MODEL_FILENAME: str = "clusters.pkl"
 
 POPULARITY_WEIGHT: float = 0.25

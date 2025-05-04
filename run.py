@@ -12,7 +12,7 @@ from src.bgg.bgg import main_bgg
 from src.data_processing.data_prep import run_data_preparation
 from configs import *
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='src/templates', static_folder='src/static')
 
 def is_data_folder_empty(step: str = None) -> bool:
     if step == 'bgg':
@@ -84,10 +84,13 @@ def initialize_data():
             games_data = pl.read_parquet(last_file_path)
     if create_model:
         model = bgClusters()
-        clusters = model.fit(games_data, constraint_columns=CONSTRAINT_COLUMNS, name_column=NAME_COLUMN)
+        clusters = model.fit(games_data, constraint_columns=CONSTRAINT_COLUMNS, name_column=NAME_COLUMN, restart_model=create_model).clusters
     else:
-        # Add the part where it will read the saved versions
-        pass
+        last_file_path = get_latest_file(PREP_PATH)
+        games_data = pl.read_parquet(last_file_path)
+        model = bgClusters()
+        clusters = model.fit(games_data, constraint_columns=CONSTRAINT_COLUMNS, name_column=NAME_COLUMN).clusters
+
     return games_data, clusters
 
 if not os.path.exists(FEEDBACK_DIR):
@@ -175,4 +178,4 @@ if __name__ == "__main__":
     df, clusters = initialize_data()
     rec = RecommendationEngine(df, clusters)
     print("Starting Flask server...")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)

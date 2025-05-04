@@ -68,9 +68,7 @@ class bgClusters:
                 saved_model = pickle.load(f)
 
                 if 'cluster_to_games' in saved_model:
-                    cluster_mapping = saved_model['cluster_to_games']
-
-                    for cluster_id, game_names in cluster_mapping.items():
+                    for cluster_id, game_names in saved_model['cluster_to_games'].items():
                         self.clusters[cluster_id] = {
                             'constraint': f"cluster_{cluster_id}",
                             'game_names': game_names,
@@ -86,13 +84,17 @@ class bgClusters:
                     return self
 
         self.feature_columns = get_feature_columns(games_df, RELEVANT_COLUMNS)
-        self.games_df = games_df.select(self.feature_columns).to_numpy()
+        # self.games_df = games_df.select(self.feature_columns).to_numpy()
+        self.games_df = games_df.select(self.feature_columns + [name_column] if name_column else self.feature_columns)
+        # self.games_df = games_df.select(self.feature_columns)
+        # self.unconstrained_df = self.games_df.drop(name_column)
         self.unconstrained_df = self.games_df
         self.feature_count = self.games_df.shape[1]
         self.name_column = name_column
         self.constraint_columns = constraint_columns
 
         for column in self.constraint_columns:
+            # constrained_df = self.games_df.filter(pl.col(column) == 1).drop(name_column)
             constrained_df = self.games_df.filter(pl.col(column) == 1)
             self.unconstrained_df = self.unconstrained_df.filter(pl.col(column) != 1)
             self._create_constrained_clusters(constrained_df, constraint_name=column.split('GAME_CAT_GROUP_')[1], plot=plot)
@@ -191,14 +193,15 @@ class bgClusters:
             Name of the constraint
         """
         cluster_id = len(self.clusters)
+        data_to_cluster_features = data_to_cluster.drop(self.name_column)
         optimal_k = self._find_optimal_k(
-            data=data_to_cluster,
+            data=data_to_cluster_features,
             constraint_name=constraint_name,
             plot=plot
         )
 
         kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init=10)
-        labels = kmeans.fit_predict(data_to_cluster)
+        labels = kmeans.fit_predict(data_to_cluster_features)
 
         for sub_id in range(optimal_k):
             sub_indices = [i for i in range(len(labels)) if labels[i] == sub_id]
@@ -423,7 +426,8 @@ class bgClusters:
                 print("-" * 60)
                 print(f"Selected optimal k = {optimal_k} (data size: {data_size})\n")
 
-        with open(f'model/clustering_results/clustering_log_{constraint_name}.txt', 'w') as f:
+
+        with open(os.path.join(os.path.join(BASE_DIR, "clustering_results"), f'clustering_log_{constraint_name}.txt'), 'w') as f:
             f.write(captured_output.getvalue())
 
         return optimal_k

@@ -9,6 +9,7 @@ from .utils import *
 # - Currently have a single distance matrix for all the clusters, can have 1 for each cluster and then only use the one needed for the current recommendation.
 #   - It will be faster.
 #   - It will require less memory to store it.
+# - I can also improve the matrix using indexes and some function from sklearn, unless I use something like CUDA i can't probably beat the performance of it.
 # - Work with Expansions/Variations.
 # - Cache cluster lookups.
 # - Cache previous recommendations.
@@ -34,7 +35,7 @@ class FeatureProcessor:
         Raises:
             ValueError: If the game is not found in the dataframe.
         """
-        feature_columns = get_feature_columns(df)
+        feature_columns = get_feature_columns(df, RELEVANT_COLUMNS)
         
         input_game_row = df.filter(pl.col("game_name") == game_name)
         if input_game_row.height == 0:
@@ -114,16 +115,15 @@ class ScoreCalculator:
             distance_matrix[game1] = {}
             features1 = np.array([df[i, col] for col in feature_columns])
             
-            for j, game2 in enumerate(games[i+1:], i+1):
+            for j, game2 in enumerate(games):
+                if game1 == game2:
+                    continue
                 features2 = np.array([df[j, col] for col in feature_columns])
                 distance = np.linalg.norm(features1 - features2)
                 similarity = 1 / (1 + distance)
                 
                 distance_matrix[game1][game2] = similarity
-                if game2 not in distance_matrix:
-                    distance_matrix[game2] = {}
-                distance_matrix[game2][game1] = similarity
-                
+        
         return distance_matrix
        
     def calculate_rating_quality_score(self) -> pl.Expr:
@@ -237,7 +237,7 @@ class RecommendationEngine:
     def __init__(self, df: pl.DataFrame, clusters: Dict[int, Dict[str, Any]]):
         self.data = df
         self.clusters = clusters
-        self.feature_columns = get_feature_columns(df)
+        self.feature_columns = get_feature_columns(df, RELEVANT_COLUMNS)
         self.feature_processor = FeatureProcessor()
         self.score_calculator = ScoreCalculator()
         self.explanation_generator = ExplanationGenerator()
