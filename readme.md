@@ -6,7 +6,7 @@ A board game recommendation system powered by BoardGameGeek data and machine lea
 
 Boardom Buster helps users discover new board games based on their current favorites. The system analyzes game features like complexity, player count, play time, and themes to provide personalized recommendations using clustering algorithms and similarity metrics. 
 
-Blog post about it: https://wilowsballoc.bearblog.dev/boardom-buster-my-boardgame-recommendation-system/
+Blog post about it: [click](https://wilowsballoc.bearblog.dev/boardom-buster-my-boardgame-recommendation-system/)
 
 ![Main Page Screenshot](docs/images/main_page.png)
 *Boardom Buster's recommendation interface*
