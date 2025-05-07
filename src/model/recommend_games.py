@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
+from sklearn.metrics.pairwise import euclidean_distances
 import numpy as np
 import polars as pl
 
@@ -100,34 +101,29 @@ class ScoreCalculator:
     def __init__(self):
         pass
 
-    def precalculate_all_distances(self, df: pl.DataFrame, feature_columns: List[str]) -> Dict[str, Dict[str, float]]:
+    def precalculate_all_distances(self, df: pl.DataFrame, feature_columns: List[str], clusters: Dict[int, List[str]]) -> Dict[int, Dict[str, Union[np.ndarray, List[str]]]]:
         """
-        Pre-calculates distances between all games.
-        
+        Precalculates distances between games within each cluster.
+
         Args:
-            df: DataFrame containing all games
-            feature_columns: List of feature column names
-            
+            df: Input DataFrame containing game features
+            feature_columns: List of columns to use for distance calculation
+            clusters: Dictionary mapping cluster IDs to lists of game names
+
         Returns:
-            Dictionary of dictionaries containing pairwise distances
+            Dictionary mapping cluster IDs to distance matrices and game lists
         """
-        distance_matrix = {}
-        games = df["game_name"].to_list()
-        
-        for i, game1 in enumerate(games):
-            distance_matrix[game1] = {}
-            features1 = np.array([df[i, col] for col in feature_columns])
-            
-            for j, game2 in enumerate(games):
-                if game1 == game2:
-                    continue
-                features2 = np.array([df[j, col] for col in feature_columns])
-                distance = np.linalg.norm(features1 - features2)
-                similarity = 1 / (1 + distance)
-                
-                distance_matrix[game1][game2] = similarity
-        
-        return distance_matrix
+        cluster_distances = {}
+
+        for cluster, games in clusters.items():
+            cluster_df = df.filter(pl.col('game_name').is_in(games['game_names'])).sort('game_name')
+            X = cluster_df.select(feature_columns).to_numpy()
+            distances = euclidean_distances(X)
+            cluster_distances[cluster] = {
+                'distances': distances,
+                'games': cluster_df.get_column('game_name').to_list()
+            }
+        return cluster_distances
        
     def calculate_rating_quality_score(self) -> pl.Expr:
         """
@@ -190,7 +186,7 @@ class ScoreCalculator:
         """
         return (
             (pl.col("popularity_score_normalized") * pl.lit(POPULARITY_WEIGHT)) +
-            (pl.col("distance_score") * pl.lit(DISTANCE_WEIGHT)) +
+            ((1 - pl.col("distance_score_normalized")) * pl.lit(DISTANCE_WEIGHT)) +
             (pl.col("rating_quality_score_normalized") * pl.lit(RATING_QUALITY_WEIGHT))
         ).alias("final_score")
 
@@ -212,11 +208,11 @@ class ExplanationGenerator:
         explanations = []
         
         # Always explain the similarity first
-        if game_scores["similarity"] > 0.8:
+        if 1 - game_scores["distance"] > 0.8:
             explanations.append("This game is very similar to your selected game")
-        elif game_scores["similarity"] > 0.6:
+        elif 1 - game_scores["distance"] > 0.6:
             explanations.append("This game shares many characteristics with your selected game")
-        elif game_scores["similarity"] > 0.4:
+        elif 1 - game_scores["distance"] > 0.4:
             explanations.append("This game has some similarities to your selected game")
         
         # Only mention popularity and ratings as secondary factors
@@ -247,22 +243,37 @@ class RecommendationEngine:
 
         print("Pre-calculating distance matrix...")
         self.distance_matrix = self.score_calculator.precalculate_all_distances(
-            self.data, self.feature_columns
+            self.data, self.feature_columns, self.clusters
         )
         print("Distance matrix calculated.")
 
-    def get_precalculated_distances(self, input_game: str, candidate_games: List[str]) -> List[float]:
+    def get_precalculated_distances(self, input_game: str, cluster_id: int, candidate_games: pl.DataFrame) -> List[float]:
         """
-        Retrieves pre-calculated distances for candidate games.
-        
+        Get distances between input game and candidate games within the same cluster.
+
         Args:
-            input_game: Name of the input game
-            candidate_games: List of candidate game names
-            
+            cluster_id: ID of the cluster containing the games
+            input_game: Name of the reference game
+            candidate_games: List of game names to get distances for. If None, uses all games in cluster.
+
         Returns:
-            List of pre-calculated similarity scores
+            List of distances in the same order as candidate_games
         """
-        return [self.distance_matrix[input_game][game] for game in candidate_games]
+        cluster_data = self.distance_matrix[cluster_id]
+        try:
+            game_idx = cluster_data['games'].index(input_game)
+            distances = []
+            for game in candidate_games.get_column('game_name'):
+                try:
+                    print(candidate_games.get_column('game_name'))
+                    candidate_idx = cluster_data['games'].index(game)
+                    distances.append(cluster_data['distances'][game_idx][candidate_idx])
+                except ValueError:
+                    distances.append(None)
+
+            return distances
+        except ValueError:
+            return None
         
     def recommend_games(self, game_name: str) -> Dict[str, Any]:
         """
@@ -298,7 +309,8 @@ class RecommendationEngine:
 
             distances = self.get_precalculated_distances(
                 game_name, 
-                candidates_df["game_name"].to_list()
+                target_cluster_id,
+                candidates_df
             )
 
             candidates_df = candidates_df.with_columns(
@@ -314,7 +326,7 @@ class RecommendationEngine:
             normalized_df = self.score_calculator.normalize_scores(candidates_df, score_columns)
 
             normalized_df = normalized_df.filter(
-                pl.col("distance_score") >= MIN_SIMILARITY_THRESHOLD
+                pl.col("distance_score_normalized") <= MIN_DISTANCE_THRESHOLD
             )
 
             if normalized_df.height == 0:
@@ -328,7 +340,6 @@ class RecommendationEngine:
                 .sort("final_score", descending=True)
                 .head(5)
             )
-
             result = {
                 "input_game": game_name,
                 "cluster_id": target_cluster_id,
@@ -337,12 +348,13 @@ class RecommendationEngine:
                     row["game_name"]: {
                         "final_score": row["final_score"],
                         "popularity": row["popularity_score_normalized"],
-                        "similarity": row["distance_score"],
+                        "distance": row["distance_score_normalized"],
                         "rating_quality": row["rating_quality_score_normalized"]
                     }
                     for row in top_5_df.iter_rows(named=True)
                 }
             }
+            print(result)
 
             return result
 

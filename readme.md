@@ -74,9 +74,24 @@ boardom_buster/
 
 *Coming soon*
 
-## To do:
+## To do (from 2025-05-05 onwards):
 
-*Coming soon*
+- [ ] Add logging for the data_processing modul + error handling.
+- [ ] Add logging for the model module + error handling.
+- [ ] Refactor all the plotting being done on the model module.
+- [ ] Improve scoring metrics (this requires studying).
+- [ ] Refactor distance matrix calculation.
+    - [X] Refactor.
+    - [ ] Cache the results.
+    - [X] Distance matrix for each cluster.
+    - [ ] Vectorization (?).
+- [ ] Add/Work with board games expansions/variations.
+- [ ] Cache cluster lookups (?). *
+- [ ] Cache previous recommendations. *
+- [ ] Accept more than 1 game as input. 
+- [ ] Improve UI (this requires a sacrificing ritual).
+
+* Ideally I could pre compute everything, every single recommendation. Should I do it? What about multi-input?
 
 ## Acknowledgments
 

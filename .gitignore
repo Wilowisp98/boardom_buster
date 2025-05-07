@@ -2,6 +2,8 @@
 **/log/
 **/err/
 **/bgg_control.json
-**/all.ipynb
 **/clustering_results/
-**/analysis/
+**/analysis/**
+**/user_feedback.csv
+**/src/bgg/data/*
+**/src/data_processing/processed_data/*
