@@ -265,7 +265,6 @@ class RecommendationEngine:
             distances = []
             for game in candidate_games.get_column('game_name'):
                 try:
-                    print(candidate_games.get_column('game_name'))
                     candidate_idx = cluster_data['games'].index(game)
                     distances.append(cluster_data['distances'][game_idx][candidate_idx])
                 except ValueError:
@@ -354,7 +353,6 @@ class RecommendationEngine:
                     for row in top_5_df.iter_rows(named=True)
                 }
             }
-            print(result)
 
             return result
 
