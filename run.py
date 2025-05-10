@@ -3,6 +3,7 @@ import os
 import asyncio
 from datetime import datetime
 from typing import Dict
+import argparse
 
 import polars as pl
 from flask import Flask, render_template, request, jsonify
@@ -100,7 +101,8 @@ def initialize_data(create_model: bool = False) -> tuple[pl.DataFrame, Dict]:
         games_data,
         constraint_columns=CONSTRAINT_COLUMNS,
         name_column=NAME_COLUMN,
-        restart_model=create_model
+        restart_model=create_model,
+        plot=True
     ).clusters
 
     return games_data, clusters
@@ -180,8 +182,13 @@ def save_feedback():
         }), 500
     
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Run BGG recommendation system')
+    parser.add_argument('--force_restart', type=bool, default=False,
+                       help='Force restart the model initialization')
+    args = parser.parse_args()
+
     print("Initializing data and model...")
-    df, clusters = initialize_data()
+    df, clusters = initialize_data(create_model=args.force_restart)
     rec = RecommendationEngine(df, clusters)
     print("Starting Flask server...")
     app.run(debug=False, host='0.0.0.0', port=5000)

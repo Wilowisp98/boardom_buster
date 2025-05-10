@@ -90,6 +90,7 @@ boardom_buster/
 - [ ] Cache previous recommendations. *
 - [ ] Accept more than 1 game as input. 
 - [ ] Improve UI (this requires a sacrificing ritual).
+- [ ] Add reqs. file.
 
 * Ideally I could pre compute everything, every single recommendation. Should I do it? What about multi-input?
 

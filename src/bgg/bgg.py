@@ -297,7 +297,7 @@ class BGG:
         self.logger.info(f"Starting continuous scan from ID {start_id}")
 
         # while consecutive_failures < MAX_CONSECUTIVE_FAILURES:
-        while current_id <= 1000:
+        while current_id <= 20000:
             try:
                 batch_ids = list(range(current_id, current_id + batch_size))
                 self.logger.info(f"Processing batch: IDs {current_id} to {current_id + batch_size - 1}")
