@@ -5,6 +5,32 @@
     --highlight-color: #d4a76a;
 }
 
+body::before, body::after {
+    content: "DEMO";
+    position: fixed;
+    font-size: 16vw;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.1);
+    white-space: nowrap;
+    z-index: -1;
+    font-family: 'Arial Black', sans-serif;
+    pointer-events: none;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+    letter-spacing: 0.1em;
+}
+
+body::before {
+    top: 50%;
+    left: 25%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+body::after {
+    top: 50%;
+    right: 25%;
+    transform: translate(50%, -50%) rotate(-45deg);
+}
+
 * {
     box-sizing: border-box;
     margin: 0;

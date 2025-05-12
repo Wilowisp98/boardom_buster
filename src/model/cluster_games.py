@@ -279,7 +279,7 @@ class bgClusters:
         norm_cluster_size = cluster_size_scores
 
         complexity_penalty = []
-        penalty_weight = 0.2
+        penalty_weight = 0.1
         max_k_value = max(k_range)
         for k in k_range:
             penalty = penalty_weight * (k / max_k_value)**2
@@ -361,7 +361,7 @@ class bgClusters:
 
             plt.tight_layout()
             # Save to file
-            fig.savefig(f'model/clustering_results/optimization_process_{constraint_name}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'{MODEL_DETAILS_DIR}/optimization_process_{constraint_name}.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
             # VISUALIZATION 1: Individual metrics (original)
@@ -377,7 +377,7 @@ class bgClusters:
             plt.legend()
             plt.tight_layout()
             # Save to file
-            fig.savefig(f'model/clustering_results/individual_metrics_{constraint_name}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'{MODEL_DETAILS_DIR}/individual_metrics_{constraint_name}.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
             # VISUALIZATION 2: Combined scores with iteration markers
@@ -405,7 +405,7 @@ class bgClusters:
             plt.legend()
             plt.tight_layout()
             # Save to file
-            fig.savefig(f'model/clustering_results/combined_scores_{constraint_name}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'{MODEL_DETAILS_DIR}/combined_scores_{constraint_name}.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
             # Print iterations summary
@@ -583,7 +583,7 @@ class bgClusters:
             
             plt.tight_layout()
             plt.grid(alpha=0.3)
-            plt.savefig(f'model/clustering_results/pca_clusters_{timestamp}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(f'{MODEL_DETAILS_DIR}/pca_clusters_{timestamp}.png', dpi=300, bbox_inches='tight')
             plt.close()
             
         except Exception as e:
@@ -712,7 +712,7 @@ class bgClusters:
             plt.suptitle('Comparison of Dimensionality Reduction Techniques for Cluster Visualization', 
                          fontsize=16, y=0.98)
             plt.tight_layout(rect=[0, 0.08, 1, 0.95])  # Adjust for the suptitle
-            plt.savefig(f'model/clustering_results/combined_visualization_{timestamp}.png', dpi=300, bbox_inches='tight')
+            plt.savefig(f'{MODEL_DETAILS_DIR}/combined_visualization_{timestamp}.png', dpi=300, bbox_inches='tight')
             plt.close()
             
         except Exception as e:

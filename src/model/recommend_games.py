@@ -10,10 +10,6 @@ from .configs import *
 from .utils import *
 
 # TO DO:
-# - Currently have a single distance matrix for all the clusters, can have 1 for each cluster and then only use the one needed for the current recommendation.
-#   - It will be faster.
-#   - It will require less memory to store it.
-# - I can also improve the matrix using indexes and some function from sklearn, unless I use something like CUDA i can't probably beat the performance of it.
 # - Work with Expansions/Variations.
 # - Cache cluster lookups.
 # - Cache previous recommendations.
@@ -116,7 +112,7 @@ class ScoreCalculator:
         cluster_distances = {}
 
         for cluster, games in clusters.items():
-            cluster_df = df.filter(pl.col('game_name').is_in(games['game_names'])).sort('game_name')
+            cluster_df = df.filter(pl.col('game_name').is_in(games['game_names']))
             X = cluster_df.select(feature_columns).to_numpy()
             distances = euclidean_distances(X)
             cluster_distances[cluster] = {

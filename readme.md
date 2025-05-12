@@ -90,7 +90,8 @@ boardom_buster/
 - [ ] Cache previous recommendations. *
 - [ ] Accept more than 1 game as input. 
 - [ ] Improve UI (this requires a sacrificing ritual).
-- [ ] Add reqs. file.
+- [X] Add reqs. file.
+- [ ] Save the ID before the 50 fails, not the ID after.
 
 * Ideally I could pre compute everything, every single recommendation. Should I do it? What about multi-input?
 
