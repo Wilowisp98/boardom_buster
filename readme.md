@@ -76,7 +76,7 @@ boardom_buster/
 
 ## To do (from 2025-05-05 onwards):
 
-- [ ] Add logging for the data_processing modul + error handling.
+- [ ] Add logging for the data_processing module + error handling.
 - [ ] Add logging for the model module + error handling.
 - [ ] Refactor all the plotting being done on the model module.
 - [ ] Improve scoring metrics (this requires studying).
@@ -90,10 +90,16 @@ boardom_buster/
 - [ ] Cache previous recommendations. *
 - [ ] Accept more than 1 game as input. 
 - [ ] Improve UI (this requires a sacrificing ritual).
-- [X] Add reqs. file.
+- [X] Add requirements.txt.
 - [ ] Save the ID before the 50 fails, not the ID after.
+- [ ] The entire fetch takes very long, if something fails (for some reason) it has to restart. Need to think about creating some type of checkpoint.
+- [ ] Docker image.
+ 
+\* Ideally I could pre compute everything, every single recommendation. Should I do it? What about multi-input?
 
-* Ideally I could pre compute everything, every single recommendation. Should I do it? What about multi-input?
+## Ideas to explore:
+
+- Some type of NLP where I can encode the game description into vector embeddings (seq2seq and then only use the encoder) and compare them using cosine-similarity. (allied with the approach being used now)
 
 ## Acknowledgments
 
@@ -101,4 +107,4 @@ boardom_buster/
 
 ## Disclaimer
 
-This project is not affiliated with BoardGameGeek. All game data is sourced from the publicly available BGG API.
+This project is not affiliated with or endorsed by [BoardGameGeek](https://boardgamegeek.com/) (BGG). All game data is sourced from the publicly available BGG API and is used solely for educational and hobby purposes. There is no monetary intent behind this project.

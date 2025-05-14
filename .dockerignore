@@ -1,0 +1,9 @@
+**/__pycache__/
+**/log/
+**/err/
+**/bgg_control.json
+**/clustering_results/
+**/analysis/**
+**/user_feedback.csv
+**/src/bgg/data/*
+**/src/data_processing/processed_data/*
